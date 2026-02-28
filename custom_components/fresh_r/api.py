@@ -6,7 +6,7 @@ Authentication flow (observed via browser):
   - There is NO separate hex token — auth is purely cookie-based (PHPSESSID).
   - The persistent session (cookie jar) MUST be reused for all subsequent API calls
     so the PHPSESSID is sent automatically on the same domain.
-  - Serial: extracted from the devices page href (e.g. ?serial=e:232212/180027)
+  - Serial: extracted from the devices page href (e.g. ?serial=e:XXXXXX/XXXXXX)
 
 API (dashboard_data.js):
   POST https://dashboard.bw-log.com/api.php?q=<JSON>
@@ -46,7 +46,7 @@ _USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
-# Serial pattern: e.g. "e:232212/180027" or just digits
+# Serial pattern: e.g. "e:XXXXXX/XXXXXX" or just digits
 _SERIAL_RE = re.compile(r'serial=([^&"\'>\s]+)', re.I)
 
 

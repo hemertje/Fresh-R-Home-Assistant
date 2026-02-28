@@ -206,7 +206,7 @@ print("=" * 62)
 print("6. MQTT topics & payload")
 print("=" * 62)
 
-serial = "e:232212/180027"
+serial = "e:XXXXXX/XXXXXX"
 # Use already-loaded const module (avoids importing HA packages via __init__.py)
 MQTT_STATE_TOPIC = const.MQTT_STATE_TOPIC
 MQTT_AVAIL_TOPIC = const.MQTT_AVAIL_TOPIC
