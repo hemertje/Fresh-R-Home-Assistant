@@ -141,7 +141,7 @@ def _token_in_headers(headers: Any) -> str | None:
 def _token_in_url(url: str) -> str | None:
     try:
         for k, vals in parse_qs(urlparse(url).query).items():
-            if k.lower() in ("l", "sess_token", "token"):
+            if k.lower() in ("l", "t", "sess_token", "token"):
                 for v in vals:
                     if _TOKEN_RE.match(v):
                         return v
