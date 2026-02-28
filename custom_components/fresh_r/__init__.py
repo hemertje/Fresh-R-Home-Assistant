@@ -14,6 +14,7 @@ from .config_flow import (
     CONF_EMAIL, CONF_PASSWORD, CONF_POLL,
     CONF_MQTT, CONF_INFLUX, CONF_INFLUX_HOST, CONF_INFLUX_PORT,
     CONF_INFLUX_DB, CONF_INFLUX_TOKEN, CONF_INFLUX_ORG,
+    CONF_INFLUX_USER, CONF_INFLUX_PASS,
 )
 
 _LOGGER   = logging.getLogger(__name__)
@@ -55,8 +56,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             influx_host    = data.get(CONF_INFLUX_HOST, "localhost"),
             influx_port    = data.get(CONF_INFLUX_PORT, 8086),
             influx_db      = data.get(CONF_INFLUX_DB, "homeassistant"),
-            influx_token   = data.get(CONF_INFLUX_TOKEN, ""),
-            influx_org     = data.get(CONF_INFLUX_ORG, ""),
+            influx_token    = data.get(CONF_INFLUX_TOKEN, ""),
+            influx_org      = data.get(CONF_INFLUX_ORG, ""),
+            influx_username = data.get(CONF_INFLUX_USER, ""),
+            influx_password = data.get(CONF_INFLUX_PASS, ""),
         )
         await coord.async_config_entry_first_refresh()
         coordinators.append(coord)

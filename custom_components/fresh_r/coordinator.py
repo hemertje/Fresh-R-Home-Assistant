@@ -31,6 +31,8 @@ class FreshRCoordinator(DataUpdateCoordinator):
         influx_db: str = "homeassistant",
         influx_token: str = "",
         influx_org: str = "",
+        influx_username: str = "",
+        influx_password: str = "",
     ) -> None:
         super().__init__(
             hass,
@@ -42,12 +44,14 @@ class FreshRCoordinator(DataUpdateCoordinator):
         self.serial         = serial
         self.device_info    = device_info
         self.mqtt_enabled   = mqtt_enabled
-        self.influx_enabled = influx_enabled
-        self.influx_host    = influx_host
-        self.influx_port    = influx_port
-        self.influx_db      = influx_db
-        self.influx_token   = influx_token
-        self.influx_org     = influx_org
+        self.influx_enabled   = influx_enabled
+        self.influx_host      = influx_host
+        self.influx_port      = influx_port
+        self.influx_db        = influx_db
+        self.influx_token     = influx_token
+        self.influx_org       = influx_org
+        self.influx_username  = influx_username
+        self.influx_password  = influx_password
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -100,6 +104,9 @@ class FreshRCoordinator(DataUpdateCoordinator):
                 url     = f"http://{self.influx_host}:{self.influx_port}/write"
                 headers = {"Content-Type": "text/plain; charset=utf-8"}
                 params  = {"db": self.influx_db, "precision": "ns"}
+                if self.influx_username:
+                    params["u"] = self.influx_username
+                    params["p"] = self.influx_password
 
             async with _aio.ClientSession() as sess:
                 async with sess.post(
