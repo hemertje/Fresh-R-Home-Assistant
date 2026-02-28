@@ -101,6 +101,19 @@ def _token_in_html(html: str) -> str | None:
     return None
 
 
+def _js_redirect(html: str) -> str | None:
+    """Find a JavaScript or meta-refresh redirect URL in page HTML."""
+    for pat in (
+        r"""(?:window\.location\.href|window\.location|location\.href)\s*=\s*['"]([^'"]+)['"]""",
+        r"""<meta[^>]+http-equiv=['"]\s*refresh\s*['"][^>]+content=['"]\d+;\s*url=([^'"]+)['"]""",
+        r"""<meta[^>]+content=['"]\d+;\s*url=([^'"]+)['"][^>]+http-equiv=['"]\s*refresh\s*['"]""",
+    ):
+        m = re.search(pat, html, re.I | re.S)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
 def _token_in_headers(headers: Any) -> str | None:
     for hv in headers.getall("Set-Cookie", []):
         for part in hv.split(";"):
@@ -258,8 +271,21 @@ class FreshRApiClient:
                 tok = _token_in_html(body)
                 if tok:
                     return tok
+                # Website may JS-redirect to dashboard.bw-log.com with token in URL
+                js_loc = _js_redirect(body)
+                if js_loc:
+                    _LOGGER.debug("JS/meta redirect detected: %s", js_loc)
+                    tok = _token_in_url(js_loc)
+                    if tok:
+                        return tok
+                    if not loc:  # Use as fallback for step 3
+                        loc = js_loc if js_loc.startswith("http") else urljoin(post_url, js_loc)
                 if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
                     raise FreshRAuthError("Server rejected credentials")
+                _LOGGER.warning(
+                    "POST %s → 200 but no token found. JS-redirect: %s. Body snippet: %.300s",
+                    post_url, js_loc or "(none)", body[:300],
+                )
 
         # Step 3 — follow redirect to dashboard (dashboard.bw-log.com/?page=devices)
         # Token may be in the dashboard page HTML/JS or in a cookie set after redirect
@@ -278,8 +304,9 @@ class FreshRApiClient:
                     if tok:
                         return tok
                     _LOGGER.warning(
-                        "Step 3 GET %s → %s — no token. Cookies: %s",
-                        abs_loc, r2.status, [c.key for c in s.cookie_jar],
+                        "Step 3 GET %s → %s (final URL: %s) — no token. Cookies: %s. Body snippet: %.300s",
+                        abs_loc, r2.status, str(r2.url),
+                        [c.key for c in s.cookie_jar], dashboard_html[:300],
                     )
             except aiohttp.ClientError as e:
                 _LOGGER.debug("Follow redirect error: %s", e)
