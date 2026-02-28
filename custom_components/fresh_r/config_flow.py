@@ -55,8 +55,11 @@ class FreshRConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input[CONF_PASSWORD],
                     session,
                 )
-                await client.async_login()
-                devices = await client.async_discover_devices()
+                try:
+                    await client.async_login()
+                    devices = await client.async_discover_devices()
+                finally:
+                    await client.async_close()
 
                 if not devices:
                     errors["base"] = "no_devices"
