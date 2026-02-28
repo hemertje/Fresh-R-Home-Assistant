@@ -294,12 +294,28 @@ class FreshRApiClient:
                 if tok:
                     return tok
                 all_inputs = _all_inputs(html)
+                # Extract <script src> references and inline <script> blocks
+                script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I)
+                script_inline = re.findall(r'<script(?:[^>]*)>([\s\S]*?)</script>', html, re.I)
                 _LOGGER.warning(
                     "Fresh-r login-page diagnosis — GET %s → HTTP %s (final: %s) | "
-                    "form_action=%s | all_inputs=%s | body[:1500]=\n%s",
+                    "form_action=%s | all_inputs=%s | script_srcs=%s | "
+                    "inline_scripts=%s | full_body=\n%s",
                     login_url, r.status, str(r.url),
-                    post_url, all_inputs, html[:1500],
+                    post_url, all_inputs, script_srcs,
+                    [s.strip()[:300] for s in script_inline if s.strip()],
+                    html,
                 )
+                # Fetch external JS files to find the actual form submit handler
+                for src in script_srcs:
+                    js_url = urljoin(str(r.url), src)
+                    try:
+                        async with s.get(js_url, timeout=aiohttp.ClientTimeout(total=10)) as jr:
+                            js_body = await jr.text()
+                            _LOGGER.warning("Fresh-r JS file %s:\n%s", js_url, js_body[:5000])
+                    except Exception as je:  # noqa: BLE001
+                        _LOGGER.warning("Could not fetch JS %s: %s", js_url, je)
+
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
 
@@ -326,9 +342,9 @@ class FreshRApiClient:
                 body      = await r.text()
                 _LOGGER.warning(
                     "Fresh-r login-page diagnosis — POST %s → HTTP %s | "
-                    "final_url=%s | cookies=%s | body[:1000]=\n%s",
+                    "final_url=%s | cookies=%s | full_body=\n%s",
                     post_url, r.status, final_url,
-                    [c.key for c in s.cookie_jar], body[:1000],
+                    [c.key for c in s.cookie_jar], body,
                 )
 
                 # Hex token anywhere?
