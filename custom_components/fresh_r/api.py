@@ -266,7 +266,11 @@ class FreshRApiClient:
         return None
 
     async def _login_one(self, s: aiohttp.ClientSession, login_url: str) -> str | None:
-        """GET form → POST credentials → follow redirect → return hex token or None."""
+        """GET form → POST credentials (following all redirects) → return hex token or None.
+
+        With allow_redirects=True the POST follows the 302 → dashboard.bw-log.com chain
+        automatically, so PHPSESSID ends up in the cookie jar after a single call.
+        """
 
         # Step 1 — GET login page (collect hidden CSRF fields + any existing cookie)
         post_url = login_url
@@ -276,106 +280,82 @@ class FreshRApiClient:
                              timeout=aiohttp.ClientTimeout(total=15)) as r:
                 html     = await r.text()
                 hidden   = _hidden_inputs(html)
-                post_url = _form_action(html, login_url)
+                post_url = _form_action(html, str(r.url))
                 tok = _token_in_jar(s.cookie_jar) or _token_in_headers(r.headers)
                 if tok:
                     return tok
-                if r.status not in (200, 301, 302):
-                    _LOGGER.warning("GET %s returned HTTP %s — login page blocked?", login_url, r.status)
-                _LOGGER.debug("GET %s → %s hidden=%s action=%s", login_url, r.status, list(hidden.keys()), post_url)
+                _LOGGER.debug(
+                    "GET %s → %s (final: %s) hidden_fields=%s action=%s",
+                    login_url, r.status, str(r.url), list(hidden.keys()), post_url,
+                )
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
 
-        # Step 2 — POST credentials
-        form = {**hidden, "email": self._email, "password": self._password}
-        loc  = ""
-        async with s.post(
-            post_url,
-            data=form,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Origin":       _origin(login_url),
-                "Referer":      login_url,
-            },
-            allow_redirects=False,
-            timeout=aiohttp.ClientTimeout(total=20),
-        ) as r:
-            loc = r.headers.get("Location", "")
-            _LOGGER.debug(
-                "POST %s → status=%s loc=%s cookies=%s",
-                post_url, r.status, loc or "(none)", [c.key for c in s.cookie_jar],
-            )
-
-            tok = _token_in_headers(r.headers) or _token_in_jar(s.cookie_jar) or _token_in_url(loc)
-            if tok:
-                return tok
-
-            # Redirected back to login — credentials rejected or no token yet
-            if "page=login" in loc:
-                body = await r.text()
-                if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
-                    raise FreshRAuthError("Server rejected credentials")
-                _LOGGER.debug("Redirect back to login — trying next URL")
-                return None
-
-            if r.status == 200:
-                body = await r.text()
-                tok = _token_in_html(body)
-                if tok:
-                    return tok
-                # Website may JS-redirect to dashboard.bw-log.com with token in URL
-                js_loc = _js_redirect(body)
-                if js_loc:
-                    _LOGGER.debug("JS/meta redirect detected: %s", js_loc)
-                    tok = _token_in_url(js_loc)
-                    if tok:
-                        return tok
-                    if not loc:
-                        loc = js_loc if js_loc.startswith("http") else urljoin(post_url, js_loc)
-                if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
-                    raise FreshRAuthError("Server rejected credentials")
-                _LOGGER.warning(
-                    "POST %s → 200 but no hex token. JS-redirect: %s. Body snippet: %.300s",
-                    post_url, js_loc if r.status == 200 else "(none)", body[:300],
+        # Step 2 — POST credentials, follow the full redirect chain automatically.
+        # Send both "email" and "username" so we work regardless of which name the
+        # server expects (fresh-r.me login forms have been observed using both).
+        form = {**hidden, "email": self._email, "username": self._email, "password": self._password}
+        try:
+            async with s.post(
+                post_url,
+                data=form,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin":       _origin(login_url),
+                    "Referer":      login_url,
+                },
+                allow_redirects=True,
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                final_url = str(r.url)
+                body      = await r.text()
+                _LOGGER.debug(
+                    "POST %s → status=%s final_url=%s cookies=%s",
+                    post_url, r.status, final_url, [c.key for c in s.cookie_jar],
                 )
 
-        # Step 3 — follow redirect to dashboard.bw-log.com/?page=devices
-        # PHPSESSID cookie is set here; also check for hex token in page or URL.
-        if loc:
-            abs_loc = loc if loc.startswith("http") else urljoin(post_url, loc)
-            try:
-                async with s.get(abs_loc, allow_redirects=True,
-                                 timeout=aiohttp.ClientTimeout(total=15)) as r2:
-                    dashboard_html = await r2.text()
-                    final_url      = str(r2.url)
-                    cookies_now    = [c.key for c in s.cookie_jar]
-                    _LOGGER.debug(
-                        "Step 3 GET %s → %s (final: %s) cookies=%s",
-                        abs_loc, r2.status, final_url, cookies_now,
-                    )
-                    tok = (
-                        _token_in_headers(r2.headers) or
-                        _token_in_jar(s.cookie_jar) or
-                        _token_in_url(final_url) or
-                        _token_in_html(dashboard_html)
-                    )
-                    if tok:
-                        return tok
-                    # No hex token — that is normal for cookie-only auth.
-                    # PHPSESSID will be picked up by async_login() above.
-                    _LOGGER.debug(
-                        "Step 3 complete — no hex token (cookie-only auth). "
-                        "Cookies: %s. Body snippet: %.300s",
-                        cookies_now, dashboard_html[:300],
-                    )
-            except aiohttp.ClientError as e:
-                _LOGGER.debug("Follow redirect error: %s", e)
+                # Hex token anywhere?
+                tok = (
+                    _token_in_headers(r.headers) or
+                    _token_in_jar(s.cookie_jar) or
+                    _token_in_url(final_url) or
+                    _token_in_html(body)
+                )
+                if tok:
+                    return tok
 
-        _LOGGER.debug(
-            "No hex token via %s. Cookies: %s (PHPSESSID will be used as token)",
-            login_url, [c.key for c in s.cookie_jar],
-        )
-        return None
+                # Landed on dashboard.bw-log.com → login succeeded (cookie-only auth).
+                # PHPSESSID will be returned by async_login() as the token value.
+                if "bw-log.com" in final_url:
+                    _LOGGER.debug(
+                        "Landed on dashboard (%s) — cookie-only auth. cookies=%s",
+                        final_url, [c.key for c in s.cookie_jar],
+                    )
+                    return None
+
+                # Explicit server-side error in body?
+                if re.search(r'\b(invalid|incorrect|wrong|onjuist|fout)\b', body, re.I):
+                    raise FreshRAuthError("Server rejected credentials")
+
+                # Still on login page after POST — login failed silently.
+                if "page=login" in final_url:
+                    _LOGGER.warning(
+                        "Still on login page after POST (%s) — "
+                        "credentials may be wrong, or form field names differ. "
+                        "Found form fields: %s",
+                        final_url, list(hidden.keys()),
+                    )
+                    return None
+
+                _LOGGER.warning(
+                    "POST %s → %s (final: %s) — unexpected. cookies=%s body=%.300s",
+                    post_url, r.status, final_url,
+                    [c.key for c in s.cookie_jar], body[:300],
+                )
+                return None
+
+        except aiohttp.ClientError as e:
+            raise FreshRConnectionError(str(e)) from e
 
     # ── Device discovery ───────────────────────────────────────────────────────
 
