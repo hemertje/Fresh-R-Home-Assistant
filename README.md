@@ -101,7 +101,14 @@ cp -r custom_components/fresh_r  <HA-config>/custom_components/
 cp www/fresh-r-card.js  <HA-config>/www/
 ```
 
-Add the resource in `configuration.yaml` or via **Settings → Dashboards → Resources**:
+Add the resource via **Settings → Dashboards → Resources → Add resource**:
+
+| Field | Value |
+|---|---|
+| URL | `/local/fresh-r-card.js` |
+| Resource type | `JavaScript module` |
+
+Or add it manually in `configuration.yaml`:
 
 ```yaml
 lovelace:
