@@ -275,148 +275,145 @@ class FreshRApiClient:
         return None
 
     async def _login_one(self, s: aiohttp.ClientSession, login_url: str) -> str | None:
-        """GET form → POST credentials (following all redirects) → return hex token or None.
+        """GET form → try multiple POST endpoints → return hex token or None.
 
-        With allow_redirects=True the POST follows the 302 → dashboard.bw-log.com chain
-        automatically, so PHPSESSID ends up in the cookie jar after a single call.
+        The fresh-r.me login form has no action/method attributes — JS handles
+        submission and may POST to a different URL than the login page itself.
+        We therefore probe several candidate endpoints until one redirects us to
+        dashboard.bw-log.com (= login succeeded).
         """
 
-        # Step 1 — GET login page (collect hidden CSRF fields + any existing cookie)
-        post_url = login_url
-        hidden:   dict[str, str] = {}
+        # ── Step 1: GET login page ───────────────────────────────────────────
+        form_post_url = login_url
+        hidden:        dict[str, str] = {}
         try:
             async with s.get(login_url, allow_redirects=True,
                              timeout=aiohttp.ClientTimeout(total=15)) as r:
-                html     = await r.text()
-                hidden   = _hidden_inputs(html)
-                post_url = _form_action(html, str(r.url))
+                html        = await r.text()
+                hidden      = _hidden_inputs(html)
+                form_post_url = _form_action(html, str(r.url))
                 tok = _token_in_jar(s.cookie_jar) or _token_in_headers(r.headers)
                 if tok:
                     return tok
-                all_inputs = _all_inputs(html)
-                # Extract <script src> references and inline <script> blocks
-                script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I)
-                script_inline = re.findall(r'<script(?:[^>]*)>([\s\S]*?)</script>', html, re.I)
+                # Log full body + all script references so we can see the JS handler
+                script_srcs    = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I)
+                script_inline  = re.findall(r'<script(?:[^>]*)>([\s\S]*?)</script>', html, re.I)
                 _LOGGER.warning(
-                    "Fresh-r login-page diagnosis — GET %s → HTTP %s (final: %s) | "
-                    "form_action=%s | all_inputs=%s | script_srcs=%s | "
-                    "inline_scripts=%s | full_body=\n%s",
+                    "Fresh-r GET %s → HTTP %s (final: %s) | "
+                    "form_action=%s | inputs=%s | script_srcs=%s | inline_js=%s\n%s",
                     login_url, r.status, str(r.url),
-                    post_url, all_inputs, script_srcs,
-                    [s.strip()[:300] for s in script_inline if s.strip()],
+                    form_post_url, _all_inputs(html), script_srcs,
+                    [js.strip()[:400] for js in script_inline if js.strip()],
                     html,
                 )
-                # Fetch external JS files to find the actual form submit handler
                 for src in script_srcs:
                     js_url = urljoin(str(r.url), src)
                     try:
                         async with s.get(js_url, timeout=aiohttp.ClientTimeout(total=10)) as jr:
-                            js_body = await jr.text()
-                            _LOGGER.warning("Fresh-r JS file %s:\n%s", js_url, js_body[:5000])
+                            _LOGGER.warning("Fresh-r JS %s:\n%s", js_url, await jr.text())
                     except Exception as je:  # noqa: BLE001
-                        _LOGGER.warning("Could not fetch JS %s: %s", js_url, je)
-
+                        _LOGGER.warning("JS fetch failed %s: %s", js_url, je)
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
 
-        # Step 2 — POST credentials, follow the full redirect chain automatically.
+        # ── Step 2: build candidate POST URLs ───────────────────────────────
+        # The JS submit handler may target a different URL; probe all candidates.
+        parsed = urlparse(login_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        # e.g. https://fresh-r.me/login/index.php  (strip ?page=login)
+        no_query = parsed._replace(query="").geturl()
+        # e.g. https://fresh-r.me/login/           (parent directory)
+        parent   = urljoin(login_url, ".")
+        candidates: list[str] = []
+        for url in [form_post_url, no_query, parent, origin + "/"]:
+            if url not in candidates:
+                candidates.append(url)
+
         form = {**hidden, "email": self._email, "password": self._password}
         _LOGGER.warning(
-            "Fresh-r POST payload — url=%s fields=%s",
-            post_url,
+            "Fresh-r login — will try %d POST endpoints: %s | fields=%s",
+            len(candidates), candidates,
             {k: ("***" if k == "password" else v) for k, v in form.items()},
         )
-        try:
-            async with s.post(
-                post_url,
-                data=form,
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Origin":       _origin(login_url),
-                    "Referer":      login_url,
-                },
-                allow_redirects=True,
-                timeout=aiohttp.ClientTimeout(total=20),
-            ) as r:
-                final_url = str(r.url)
-                body      = await r.text()
-                _LOGGER.warning(
-                    "Fresh-r login-page diagnosis — POST %s → HTTP %s | "
-                    "final_url=%s | cookies=%s | full_body=\n%s",
-                    post_url, r.status, final_url,
-                    [c.key for c in s.cookie_jar], body,
-                )
 
-                # Hex token anywhere?
-                tok = (
-                    _token_in_headers(r.headers) or
-                    _token_in_jar(s.cookie_jar) or
-                    _token_in_url(final_url) or
-                    _token_in_html(body)
-                )
-                if tok:
-                    return tok
-
-                # Landed on dashboard.bw-log.com → login succeeded (cookie-only auth).
-                if "bw-log.com" in final_url:
-                    _LOGGER.debug(
-                        "Landed on dashboard (%s) — cookie-only auth. cookies=%s",
-                        final_url, [c.key for c in s.cookie_jar],
+        # ── Step 3: POST to each candidate ──────────────────────────────────
+        last_body = ""
+        for candidate in candidates:
+            try:
+                async with s.post(
+                    candidate,
+                    data=form,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Origin":       origin,
+                        "Referer":      login_url,
+                        "Accept":       "text/html,application/xhtml+xml,*/*;q=0.9",
+                    },
+                    allow_redirects=True,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as r:
+                    final_url = str(r.url)
+                    body      = await r.text()
+                    _LOGGER.warning(
+                        "Fresh-r POST %s → HTTP %s | final=%s | cookies=%s | body[:500]=\n%s",
+                        candidate, r.status, final_url,
+                        [c.key for c in s.cookie_jar], body[:500],
                     )
-                    return None
 
-                # JavaScript / meta-refresh redirect in the POST response body?
-                # Some PHP login pages respond with 200 + JS redirect instead of
-                # an HTTP 3xx.  aiohttp follows 3xx automatically but not JS.
-                js_url = _js_redirect(body)
-                if js_url:
-                    abs_js_url = urljoin(final_url, js_url)
-                    _LOGGER.debug("POST response contains JS redirect → %s", abs_js_url)
-                    try:
-                        async with s.get(
-                            abs_js_url, allow_redirects=True,
-                            timeout=aiohttp.ClientTimeout(total=15),
-                        ) as r2:
-                            final_url2 = str(r2.url)
-                            body2      = await r2.text()
-                            tok2 = (
-                                _token_in_headers(r2.headers) or
-                                _token_in_jar(s.cookie_jar) or
-                                _token_in_url(final_url2) or
-                                _token_in_html(body2)
-                            )
-                            if tok2:
-                                return tok2
-                            if "bw-log.com" in final_url2:
-                                _LOGGER.debug(
-                                    "Landed on dashboard via JS redirect (%s) — cookie-only auth.",
-                                    final_url2,
+                    # Success: token in response
+                    tok = (
+                        _token_in_headers(r.headers) or
+                        _token_in_jar(s.cookie_jar) or
+                        _token_in_url(final_url) or
+                        _token_in_html(body)
+                    )
+                    if tok:
+                        _LOGGER.warning("Login succeeded via %s (token)", candidate)
+                        return tok
+
+                    # Success: redirected to dashboard
+                    if "bw-log.com" in final_url:
+                        _LOGGER.warning("Login succeeded via %s (cookie auth)", candidate)
+                        return None
+
+                    # JS redirect in response body → follow it
+                    js_dest = _js_redirect(body)
+                    if js_dest:
+                        abs_dest = urljoin(final_url, js_dest)
+                        _LOGGER.warning("JS redirect found → %s", abs_dest)
+                        try:
+                            async with s.get(abs_dest, allow_redirects=True,
+                                             timeout=aiohttp.ClientTimeout(total=15)) as r2:
+                                fu2   = str(r2.url)
+                                body2 = await r2.text()
+                                tok2  = (
+                                    _token_in_headers(r2.headers) or
+                                    _token_in_jar(s.cookie_jar) or
+                                    _token_in_url(fu2) or
+                                    _token_in_html(body2)
                                 )
-                                return None
-                    except aiohttp.ClientError as e:
-                        _LOGGER.debug("JS redirect GET failed: %s", e)
+                                if tok2:
+                                    return tok2
+                                if "bw-log.com" in fu2:
+                                    return None
+                        except aiohttp.ClientError as e:
+                            _LOGGER.warning("JS redirect GET failed: %s", e)
 
-                # Explicit server-side error in body?
-                if re.search(r'\b(invalid|incorrect|wrong|onjuist|fout)\b', body, re.I):
-                    raise FreshRAuthError("Server rejected credentials")
+                    last_body = body
+                    # Wrong password → stop trying other endpoints immediately
+                    if re.search(r'\b(invalid|incorrect|wrong|onjuist|fout)\b', body, re.I):
+                        raise FreshRAuthError("Server rejected credentials")
 
-                # Still on login page after POST — server rejected credentials.
-                if "page=login" in final_url:
-                    raise FreshRAuthError(
-                        f"Login mislukt — server toont login-pagina na POST naar {post_url}. "
-                        "Controleer je e-mailadres en wachtwoord op fresh-r.me. "
-                        f"Verstuurde velden: {[k for k in form if k != 'password']}"
-                    )
+            except FreshRAuthError:
+                raise
+            except aiohttp.ClientError as e:
+                _LOGGER.warning("POST %s failed: %s", candidate, e)
 
-                _LOGGER.warning(
-                    "POST %s → %s (final: %s) — unexpected. cookies=%s body=%.300s",
-                    post_url, r.status, final_url,
-                    [c.key for c in s.cookie_jar], body[:300],
-                )
-                return None
-
-        except aiohttp.ClientError as e:
-            raise FreshRConnectionError(str(e)) from e
+        # All candidates exhausted without success
+        raise FreshRAuthError(
+            f"Login mislukt na {len(candidates)} pogingen naar {candidates}. "
+            "Controleer je e-mailadres en wachtwoord op fresh-r.me."
+        )
 
     # ── Device discovery ───────────────────────────────────────────────────────
 
