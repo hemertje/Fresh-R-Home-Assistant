@@ -285,8 +285,8 @@ class FreshRApiClient:
                 if tok:
                     return tok
                 _LOGGER.debug(
-                    "GET %s → %s (final: %s) hidden_fields=%s action=%s",
-                    login_url, r.status, str(r.url), list(hidden.keys()), post_url,
+                    "GET %s → %s (final: %s) hidden_fields=%s action=%s body=%.800s",
+                    login_url, r.status, str(r.url), list(hidden.keys()), post_url, html[:800],
                 )
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
