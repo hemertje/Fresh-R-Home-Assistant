@@ -101,4 +101,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await async_mark_offline(hass, coord.serial)
             except Exception:  # noqa: BLE001
                 pass
+        client = entry_data.get("client")
+        if client is not None:
+            await client.async_close()
     return ok

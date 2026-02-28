@@ -3,6 +3,7 @@
 A Home Assistant custom integration that **reads** data from the [Fresh-r.me](https://fresh-r.me) cloud dashboard and replicates it inside Home Assistant — including a custom Lovelace card, MQTT publishing, InfluxDB writing, and a Grafana dashboard.
 
 > **Read-only** — Active ventilation control is not possible. This is a firmware limitation of the Fresh-r device; the Fresh-r.me dashboard does not expose control endpoints.
+>
 > **No historical data** — The Fresh-r.me database cannot be queried. Home Assistant's own recorder builds history going forward from the moment the integration is active.
 
 ---
@@ -234,12 +235,32 @@ python3 validate_and_simulate.py
 
 ---
 
+## Authentication
+
+Login uses **cookie-based authentication** (no API keys or tokens required):
+
+```
+1. POST credentials → fresh-r.me/login
+2. Server redirects → dashboard.bw-log.com/?page=devices
+   PHPSESSID cookie is set on dashboard.bw-log.com
+3. All subsequent API calls reuse the same session (cookie sent automatically)
+4. Serial number is discovered automatically from the devices page
+```
+
+The integration maintains a persistent HTTP session for the lifetime of the config entry, so the session cookie is never lost between polls.
+
+---
+
 ## Data Flow
 
 ```
-Fresh-r.me API
+Fresh-r.me login
      │
-     │  HTTPS poll (every 60 s)
+     │  POST email + password → redirect → PHPSESSID cookie
+     ▼
+dashboard.bw-log.com/api.php
+     │
+     │  HTTPS poll (every 60 s, authenticated via PHPSESSID)
      ▼
   api._parse()          — calibrate flow, derive heat/energy sensors
      │
@@ -251,6 +272,23 @@ Fresh-r.me API
      │
      └──► InfluxDB             fresh_r measurement, device tag
 ```
+
+---
+
+## Troubleshooting
+
+**Login fails ("no session token received")**
+Enable debug logging in `configuration.yaml` to see the full login flow:
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.fresh_r: debug
+```
+After restarting HA, the log will show the POST response status, cookies received, and a body snippet of the redirect page — paste those lines in a bug report.
+
+**No devices found after login**
+The integration first tries the JSON API, then falls back to scraping `dashboard.bw-log.com/?page=devices` for device serial links. If both fail, check the debug log for the body snippet of the devices page.
 
 ---
 
