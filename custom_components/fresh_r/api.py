@@ -310,8 +310,9 @@ class FreshRApiClient:
                 final_url = str(r.url)
                 body      = await r.text()
                 _LOGGER.debug(
-                    "POST %s → status=%s final_url=%s cookies=%s",
-                    post_url, r.status, final_url, [c.key for c in s.cookie_jar],
+                    "POST %s → status=%s final_url=%s cookies=%s body=%.500s",
+                    post_url, r.status, final_url,
+                    [c.key for c in s.cookie_jar], body[:500],
                 )
 
                 # Hex token anywhere?
@@ -325,13 +326,43 @@ class FreshRApiClient:
                     return tok
 
                 # Landed on dashboard.bw-log.com → login succeeded (cookie-only auth).
-                # PHPSESSID will be returned by async_login() as the token value.
                 if "bw-log.com" in final_url:
                     _LOGGER.debug(
                         "Landed on dashboard (%s) — cookie-only auth. cookies=%s",
                         final_url, [c.key for c in s.cookie_jar],
                     )
                     return None
+
+                # JavaScript / meta-refresh redirect in the POST response body?
+                # Some PHP login pages respond with 200 + JS redirect instead of
+                # an HTTP 3xx.  aiohttp follows 3xx automatically but not JS.
+                js_url = _js_redirect(body)
+                if js_url:
+                    abs_js_url = urljoin(final_url, js_url)
+                    _LOGGER.debug("POST response contains JS redirect → %s", abs_js_url)
+                    try:
+                        async with s.get(
+                            abs_js_url, allow_redirects=True,
+                            timeout=aiohttp.ClientTimeout(total=15),
+                        ) as r2:
+                            final_url2 = str(r2.url)
+                            body2      = await r2.text()
+                            tok2 = (
+                                _token_in_headers(r2.headers) or
+                                _token_in_jar(s.cookie_jar) or
+                                _token_in_url(final_url2) or
+                                _token_in_html(body2)
+                            )
+                            if tok2:
+                                return tok2
+                            if "bw-log.com" in final_url2:
+                                _LOGGER.debug(
+                                    "Landed on dashboard via JS redirect (%s) — cookie-only auth.",
+                                    final_url2,
+                                )
+                                return None
+                    except aiohttp.ClientError as e:
+                        _LOGGER.debug("JS redirect GET failed: %s", e)
 
                 # Explicit server-side error in body?
                 if re.search(r'\b(invalid|incorrect|wrong|onjuist|fout)\b', body, re.I):
