@@ -307,6 +307,11 @@ class FreshRApiClient:
         # Send both "email" and "username" so we work regardless of which name the
         # server expects (fresh-r.me login forms have been observed using both).
         form = {**hidden, "email": self._email, "username": self._email, "password": self._password}
+        _LOGGER.warning(
+            "Fresh-r POST payload — url=%s fields=%s",
+            post_url,
+            {k: ("***" if k == "password" else v) for k, v in form.items()},
+        )
         try:
             async with s.post(
                 post_url,
@@ -381,15 +386,13 @@ class FreshRApiClient:
                 if re.search(r'\b(invalid|incorrect|wrong|onjuist|fout)\b', body, re.I):
                     raise FreshRAuthError("Server rejected credentials")
 
-                # Still on login page after POST — login failed silently.
+                # Still on login page after POST — server rejected credentials.
                 if "page=login" in final_url:
-                    _LOGGER.warning(
-                        "Still on login page after POST (%s) — "
-                        "credentials may be wrong, or form field names differ. "
-                        "Found form fields: %s",
-                        final_url, list(hidden.keys()),
+                    raise FreshRAuthError(
+                        f"Login mislukt — server toont login-pagina na POST naar {post_url}. "
+                        "Controleer je e-mailadres en wachtwoord op fresh-r.me. "
+                        f"Verstuurde velden: {[k for k in form if k != 'password']}"
                     )
-                    return None
 
                 _LOGGER.warning(
                     "POST %s → %s (final: %s) — unexpected. cookies=%s body=%.300s",
@@ -416,6 +419,7 @@ class FreshRApiClient:
             raw = await self._call({
                 "user_units": {"request": "syssearch", "role": "user", "fields": ["units"]},
             })
+            _LOGGER.warning("syssearch API response: %s", raw)
             units = raw.get("user_units", {}).get("units", [])
             if units:
                 sys_req = {
@@ -459,7 +463,7 @@ class FreshRApiClient:
                 serials = _serials_in_html(html)
                 if not serials:
                     _LOGGER.warning(
-                        "No serial numbers found on devices page. Body snippet: %.500s", html[:500]
+                        "No serial numbers found on devices page. Body[:3000]=\n%s", html[:3000]
                     )
                     return []
 
