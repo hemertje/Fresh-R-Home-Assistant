@@ -196,8 +196,11 @@ class FreshRApiClient:
                 tok = _token_in_jar(s.cookie_jar) or _token_in_headers(r.headers)
                 if tok:
                     return tok
-                _LOGGER.debug("GET %s → %s hidden=%s", login_url, r.status, list(hidden.keys()))
-        except aiohttp.ClientError:
+                if r.status not in (200, 301, 302):
+                    _LOGGER.warning("GET %s returned HTTP %s — login page blocked?", login_url, r.status)
+                _LOGGER.debug("GET %s → %s hidden=%s action=%s", login_url, r.status, list(hidden.keys()), post_url)
+        except aiohttp.ClientError as e:
+            _LOGGER.warning("GET %s failed: %s", login_url, e)
             pass   # Continue to POST with no hidden fields
 
         # Step 2 — POST credentials
@@ -214,8 +217,11 @@ class FreshRApiClient:
             timeout=aiohttp.ClientTimeout(total=20),
         ) as r:
             loc = r.headers.get("Location", "")
-            _LOGGER.debug("POST %s → status=%s loc=%s jar=%d",
-                          post_url, r.status, loc, sum(1 for _ in s.cookie_jar))
+            cookie_keys = [c.key for c in s.cookie_jar]
+            _LOGGER.debug(
+                "POST %s → status=%s loc=%s cookies=%s",
+                post_url, r.status, loc or "(none)", cookie_keys or "(none)",
+            )
 
             tok = _token_in_headers(r.headers) or _token_in_jar(s.cookie_jar) or _token_in_url(loc)
             if tok:
@@ -240,11 +246,13 @@ class FreshRApiClient:
                            _token_in_url(str(r2.url)))
                     if tok:
                         return tok
+                    _LOGGER.debug("Step 3 GET %s → %s, still no token. Jar: %s",
+                                  abs_loc, r2.status, [c.key for c in s.cookie_jar])
             except aiohttp.ClientError as e:
                 _LOGGER.debug("Follow redirect error: %s", e)
 
-        _LOGGER.debug("No token found via %s. Jar: %s",
-                      login_url, [(c.key, c.value[:8]) for c in s.cookie_jar])
+        _LOGGER.warning("No token found via %s. Cookie names in jar: %s",
+                        login_url, [c.key for c in s.cookie_jar])
         return None
 
     # ── Device discovery ───────────────────────────────────────────────────────

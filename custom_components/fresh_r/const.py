@@ -11,9 +11,9 @@ API_BASE    = "https://dashboard.bw-log.com"
 
 # Login: tried in sequence until success
 LOGIN_URLS = [
+    "https://www.fresh-r.me/login/index.php",
+    "https://www.fresh-r.me/",
     "https://dashboard.bw-log.com/?page=login",
-    "https://fresh-r.me/",
-    "https://fresh-r.me/login/index.php",
 ]
 
 # API field list (current data only — historical data is not available via Fresh-R.me)
