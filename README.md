@@ -81,7 +81,7 @@ Fresh-R-Home-Assistant/
 │   └── fresh-r-card.js            # Custom Lovelace card
 ├── grafana/
 │   └── fresh_r_dashboard.json     # Grafana dashboard (import-ready)
-├── lovelace_dashboard.yaml        # Home Assistant dashboard YAML
+├── fresh_r_lovelace_dashboard.yaml # Home Assistant dashboard YAML
 └── validate_and_simulate.py       # Offline validation + simulation script
 ```
 
@@ -89,10 +89,14 @@ Fresh-R-Home-Assistant/
 
 ## Installation
 
+### 0 — Download
+
+Download `fresh_r_system.zip` from the repository and extract it. This creates a `fresh-r/` folder containing all files.
+
 ### 1 — Copy the custom component
 
 ```bash
-cp -r custom_components/fresh_r  <HA-config>/custom_components/
+cp -r fresh-r/custom_components/fresh_r  <HA-config>/custom_components/
 ```
 
 ### 2 — Install the Lovelace card
@@ -135,6 +139,8 @@ lovelace:
 | Database / bucket | Database name (v1) or bucket name (v2) |
 | InfluxDB token | Leave empty for v1; required for v2 |
 | InfluxDB org | Required for v2 only |
+| InfluxDB username | Optional — only for v1 with authentication |
+| InfluxDB password | Optional — only for v1 with authentication |
 
 The device serial number is **discovered automatically** — you never need to enter it.
 
@@ -142,7 +148,7 @@ The device serial number is **discovered automatically** — you never need to e
 
 **Home Assistant Lovelace**
 1. Settings → Dashboards → Add Dashboard → Raw configuration editor
-2. Paste the contents of `lovelace_dashboard.yaml`
+2. Paste the contents of `fresh_r_lovelace_dashboard.yaml`
 
 **Grafana**
 1. Dashboards → Import → Upload JSON file
