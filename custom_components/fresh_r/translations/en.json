@@ -14,7 +14,9 @@
           "influx_port":     "InfluxDB port",
           "influx_db":       "Database / bucket",
           "influx_token":    "InfluxDB token (v2; leave empty for v1)",
-          "influx_org":      "InfluxDB organisation (v2)"
+          "influx_org":      "InfluxDB organisation (v2)",
+          "influx_username": "InfluxDB username (v1; optional)",
+          "influx_password": "InfluxDB password (v1; optional)"
         }
       }
     },
