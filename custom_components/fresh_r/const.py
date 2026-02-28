@@ -10,10 +10,10 @@ API_URL     = "https://dashboard.bw-log.com/api.php"
 API_BASE    = "https://dashboard.bw-log.com"
 
 # Login: tried in sequence until success
+# Flow: GET login page → POST credentials → redirect to dashboard.bw-log.com/?page=devices
 LOGIN_URLS = [
-    "https://www.fresh-r.me/login/index.php",
-    "https://www.fresh-r.me/",
-    "https://dashboard.bw-log.com/?page=login",
+    "https://fresh-r.me/login/index.php?page=login",
+    "https://www.fresh-r.me/login/index.php?page=login",
 ]
 
 # API field list (current data only — historical data is not available via Fresh-R.me)

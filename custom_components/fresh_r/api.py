@@ -76,10 +76,28 @@ def derive(data: dict[str, float]) -> dict[str, float]:
 
 
 def _token_in_jar(jar: aiohttp.CookieJar) -> str | None:
+    # First: check well-known names
     for c in jar:
-        if c.key.lower().replace("-", "_") in ("sess_token", "token", "session_token"):
+        if c.key.lower().replace("-", "_") in ("sess_token", "token", "session_token", "l", "sid"):
             if _TOKEN_RE.match(c.value):
                 return c.value
+    # Fallback: any cookie whose value looks like a hex session token
+    for c in jar:
+        if _TOKEN_RE.match(c.value):
+            _LOGGER.debug("Using token from cookie '%s'", c.key)
+            return c.value
+    return None
+
+
+def _token_in_html(html: str) -> str | None:
+    """Scan page HTML/JS for session token assignments (e.g. var token = '...')."""
+    for pat in (
+        r"""['"]?(?:sess_token|token|session_token|l)['"]?\s*[:=]\s*['"]([0-9a-fA-F]{32,})['"]""",
+        r"""token['"]\s*:\s*['"]([0-9a-fA-F]{32,})['"]""",
+    ):
+        m = re.search(pat, html, re.I)
+        if m:
+            return m.group(1)
     return None
 
 
@@ -204,7 +222,8 @@ class FreshRApiClient:
             pass   # Continue to POST with no hidden fields
 
         # Step 2 — POST credentials
-        form = {**hidden, "email": self._email, "password": self._password, "page": "login"}
+        # Note: "page=login" is a URL query param, not a form body field
+        form = {**hidden, "email": self._email, "password": self._password}
         async with s.post(
             post_url,
             data=form,
@@ -217,37 +236,51 @@ class FreshRApiClient:
             timeout=aiohttp.ClientTimeout(total=20),
         ) as r:
             loc = r.headers.get("Location", "")
-            cookie_keys = [c.key for c in s.cookie_jar]
             _LOGGER.debug(
                 "POST %s → status=%s loc=%s cookies=%s",
-                post_url, r.status, loc or "(none)", cookie_keys or "(none)",
+                post_url, r.status, loc or "(none)", [c.key for c in s.cookie_jar],
             )
 
             tok = _token_in_headers(r.headers) or _token_in_jar(s.cookie_jar) or _token_in_url(loc)
             if tok:
                 return tok
 
-            # Server returned a page (200) or redirect — check if credentials rejected
-            if "page=login" in loc or r.status == 200:
+            # Redirected back to login — credentials rejected or no token yet
+            if "page=login" in loc:
                 body = await r.text()
                 if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
                     raise FreshRAuthError("Server rejected credentials")
-                _LOGGER.debug("Redirect back to login (no error text) — trying next URL")
+                _LOGGER.debug("Redirect back to login — trying next URL")
                 return None
 
-        # Step 3 — follow redirect if still no token
+            if r.status == 200:
+                body = await r.text()
+                tok = _token_in_html(body)
+                if tok:
+                    return tok
+                if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
+                    raise FreshRAuthError("Server rejected credentials")
+
+        # Step 3 — follow redirect to dashboard (dashboard.bw-log.com/?page=devices)
+        # Token may be in the dashboard page HTML/JS or in a cookie set after redirect
         if loc:
             abs_loc = loc if loc.startswith("http") else urljoin(post_url, loc)
             try:
                 async with s.get(abs_loc, allow_redirects=True,
                                  timeout=aiohttp.ClientTimeout(total=10)) as r2:
-                    tok = (_token_in_headers(r2.headers) or
-                           _token_in_jar(s.cookie_jar) or
-                           _token_in_url(str(r2.url)))
+                    dashboard_html = await r2.text()
+                    tok = (
+                        _token_in_headers(r2.headers) or
+                        _token_in_jar(s.cookie_jar) or
+                        _token_in_url(str(r2.url)) or
+                        _token_in_html(dashboard_html)
+                    )
                     if tok:
                         return tok
-                    _LOGGER.debug("Step 3 GET %s → %s, still no token. Jar: %s",
-                                  abs_loc, r2.status, [c.key for c in s.cookie_jar])
+                    _LOGGER.warning(
+                        "Step 3 GET %s → %s — no token. Cookies: %s",
+                        abs_loc, r2.status, [c.key for c in s.cookie_jar],
+                    )
             except aiohttp.ClientError as e:
                 _LOGGER.debug("Follow redirect error: %s", e)
 
