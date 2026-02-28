@@ -237,30 +237,40 @@ python3 validate_and_simulate.py
 
 ## Authentication
 
-Login uses **cookie-based authentication** (no API keys or tokens required):
+Login flow (confirmed via browser DevTools):
 
 ```
-1. POST credentials → fresh-r.me/login
-2. Server redirects → dashboard.bw-log.com/?page=devices
-   PHPSESSID cookie is set on dashboard.bw-log.com
-3. All subsequent API calls reuse the same session (cookie sent automatically)
-4. Serial number is discovered automatically from the devices page
+1. GET  fresh-r.me/login/index.php?page=login
+        → collect hidden CSRF fields from the login form
+
+2. POST credentials (email + password + hidden fields)
+        → server validates and returns HTTP 302
+
+3. Redirect → dashboard.bw-log.com/?page=devices&t=<64-char-hex-token>
+        → the token in the URL (?t=) is the session token
+
+4. Token stored; all API calls use:
+        POST dashboard.bw-log.com/api.php?q={"token":"<hex>","requests":{...}}
+
+5. Serial number discovered automatically via the API (syssearch request)
 ```
 
-The integration maintains a persistent HTTP session for the lifetime of the config entry, so the session cookie is never lost between polls.
+The integration uses a **persistent `aiohttp.ClientSession`** for the lifetime of the config entry and follows all redirects automatically, so the token is captured from the final URL after login.
 
 ---
 
 ## Data Flow
 
 ```
-Fresh-r.me login
+fresh-r.me/login
      │
-     │  POST email + password → redirect → PHPSESSID cookie
+     │  POST email + password
+     │  302 → dashboard.bw-log.com/?page=devices&t=<hex-token>
      ▼
 dashboard.bw-log.com/api.php
      │
-     │  HTTPS poll (every 60 s, authenticated via PHPSESSID)
+     │  HTTPS poll every 60 s
+     │  {"token": "<hex>", "requests": {"current-data": {"request": "fresh-r-now", ...}}}
      ▼
   api._parse()          — calibrate flow, derive heat/energy sensors
      │
@@ -277,18 +287,27 @@ dashboard.bw-log.com/api.php
 
 ## Troubleshooting
 
-**Login fails ("no session token received")**
-Enable debug logging in `configuration.yaml` to see the full login flow:
+**Login fails**
+
+Enable debug logging in `configuration.yaml`:
 ```yaml
 logger:
   default: warning
   logs:
     custom_components.fresh_r: debug
 ```
-After restarting HA, the log will show the POST response status, cookies received, and a body snippet of the redirect page — paste those lines in a bug report.
+After restarting HA the log shows:
+- `GET … hidden_fields=[...] action=…` — what fields the login form has
+- `POST … final_url=…` — where the server redirected after login
+- `cookies=[...]` — which cookies are present
+
+A successful login shows `final_url` ending in `dashboard.bw-log.com/...&t=<hex>` and logs `Fresh-r authenticated (token=xxxxxxxx…)`.
+
+If `final_url` still ends in `page=login`, the credentials are rejected by the server.
 
 **No devices found after login**
-The integration first tries the JSON API, then falls back to scraping `dashboard.bw-log.com/?page=devices` for device serial links. If both fail, check the debug log for the body snippet of the devices page.
+
+The integration first tries the JSON API (`syssearch`), then falls back to scraping `dashboard.bw-log.com/?page=devices` for serial links. If both fail, enable debug logging and look for the `Devices page GET` line and the body snippet.
 
 ---
 
