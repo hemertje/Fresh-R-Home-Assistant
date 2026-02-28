@@ -150,21 +150,30 @@ def _token_in_url(url: str) -> str | None:
     return None
 
 
+def _all_inputs(html: str) -> list[tuple[str, str, str]]:
+    """Return all <input> fields as (type, name, value) tuples — for diagnosis."""
+    out = []
+    for tag in re.finditer(r"<input[^>]+>", html, re.I | re.S):
+        t   = tag.group(0)
+        typ = (re.search(r'type=["\']?([^"\'>\s]+)["\']?', t, re.I) or type("", (), {"group": lambda s, n: "text"})).group(1)
+        nm  = re.search(r'name=["\']([^"\']+)["\']', t, re.I)
+        vl  = re.search(r'value=["\']([^"\']*)["\']', t, re.I)
+        if nm:
+            out.append((typ, nm.group(1), (vl.group(1) if vl else "")))
+    return out
+
+
 def _hidden_inputs(html: str) -> dict[str, str]:
     out: dict[str, str] = {}
-    for tag in re.finditer(r"<input[^>]+>", html, re.I | re.S):
-        t = tag.group(0)
-        if not re.search(r'type=["\']hidden["\']', t, re.I):
-            continue
-        nm = re.search(r'name=["\']([^"\']+)["\']', t, re.I)
-        vl = re.search(r'value=["\']([^"\']*)["\']', t, re.I)
-        if nm:
-            out[nm.group(1)] = vl.group(1) if vl else ""
+    for typ, name, value in _all_inputs(html):
+        if typ.lower() == "hidden":
+            out[name] = value
     return out
 
 
 def _form_action(html: str, base: str) -> str:
-    m = re.search(r'<form[^>]+action=["\']([^"\']*)["\']', html, re.I)
+    # Match both quoted and unquoted action attributes
+    m = re.search(r'<form[^>]+action=["\']?([^"\'>\s]*)["\']?', html, re.I)
     if not m:
         return base
     action = m.group(1)
@@ -284,9 +293,12 @@ class FreshRApiClient:
                 tok = _token_in_jar(s.cookie_jar) or _token_in_headers(r.headers)
                 if tok:
                     return tok
-                _LOGGER.debug(
-                    "GET %s → %s (final: %s) hidden_fields=%s action=%s body=%.800s",
-                    login_url, r.status, str(r.url), list(hidden.keys()), post_url, html[:800],
+                all_inputs = _all_inputs(html)
+                _LOGGER.warning(
+                    "Fresh-r login-page diagnosis — GET %s → HTTP %s (final: %s) | "
+                    "form_action=%s | all_inputs=%s | body[:1500]=\n%s",
+                    login_url, r.status, str(r.url),
+                    post_url, all_inputs, html[:1500],
                 )
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
@@ -309,10 +321,11 @@ class FreshRApiClient:
             ) as r:
                 final_url = str(r.url)
                 body      = await r.text()
-                _LOGGER.debug(
-                    "POST %s → status=%s final_url=%s cookies=%s body=%.500s",
+                _LOGGER.warning(
+                    "Fresh-r login-page diagnosis — POST %s → HTTP %s | "
+                    "final_url=%s | cookies=%s | body[:1000]=\n%s",
                     post_url, r.status, final_url,
-                    [c.key for c in s.cookie_jar], body[:500],
+                    [c.key for c in s.cookie_jar], body[:1000],
                 )
 
                 # Hex token anywhere?
