@@ -53,10 +53,7 @@ class FreshRSensor(CoordinatorEntity, SensorEntity):
         self._key       = key
         self._api_field = api_field   # None for derived/calibrated sensors
 
-        room   = coordinator.device_info.get("room") or ""
-        prefix = f"Fresh-r {room} " if room else "Fresh-r "
-
-        self._attr_name                       = prefix + friendly
+        self._attr_name                       = f"Fresh-r {friendly}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class               = _DC.get(dc_str) if dc_str else None
         self._attr_state_class                = _SC.get(sc_str) if sc_str else None
