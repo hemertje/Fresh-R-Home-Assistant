@@ -150,21 +150,30 @@ def _token_in_url(url: str) -> str | None:
     return None
 
 
+def _all_inputs(html: str) -> list[tuple[str, str, str]]:
+    """Return all <input> fields as (type, name, value) tuples — for diagnosis."""
+    out = []
+    for tag in re.finditer(r"<input[^>]+>", html, re.I | re.S):
+        t   = tag.group(0)
+        typ = (re.search(r'type=["\']?([^"\'>\s]+)["\']?', t, re.I) or type("", (), {"group": lambda s, n: "text"})).group(1)
+        nm  = re.search(r'name=["\']([^"\']+)["\']', t, re.I)
+        vl  = re.search(r'value=["\']([^"\']*)["\']', t, re.I)
+        if nm:
+            out.append((typ, nm.group(1), (vl.group(1) if vl else "")))
+    return out
+
+
 def _hidden_inputs(html: str) -> dict[str, str]:
     out: dict[str, str] = {}
-    for tag in re.finditer(r"<input[^>]+>", html, re.I | re.S):
-        t = tag.group(0)
-        if not re.search(r'type=["\']hidden["\']', t, re.I):
-            continue
-        nm = re.search(r'name=["\']([^"\']+)["\']', t, re.I)
-        vl = re.search(r'value=["\']([^"\']*)["\']', t, re.I)
-        if nm:
-            out[nm.group(1)] = vl.group(1) if vl else ""
+    for typ, name, value in _all_inputs(html):
+        if typ.lower() == "hidden":
+            out[name] = value
     return out
 
 
 def _form_action(html: str, base: str) -> str:
-    m = re.search(r'<form[^>]+action=["\']([^"\']*)["\']', html, re.I)
+    # Match both quoted and unquoted action attributes
+    m = re.search(r'<form[^>]+action=["\']?([^"\'>\s]*)["\']?', html, re.I)
     if not m:
         return base
     action = m.group(1)
@@ -284,9 +293,12 @@ class FreshRApiClient:
                 tok = _token_in_jar(s.cookie_jar) or _token_in_headers(r.headers)
                 if tok:
                     return tok
-                _LOGGER.debug(
-                    "GET %s → %s (final: %s) hidden_fields=%s action=%s",
-                    login_url, r.status, str(r.url), list(hidden.keys()), post_url,
+                all_inputs = _all_inputs(html)
+                _LOGGER.warning(
+                    "Fresh-r login-page diagnosis — GET %s → HTTP %s (final: %s) | "
+                    "form_action=%s | all_inputs=%s | body[:1500]=\n%s",
+                    login_url, r.status, str(r.url),
+                    post_url, all_inputs, html[:1500],
                 )
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
@@ -309,9 +321,11 @@ class FreshRApiClient:
             ) as r:
                 final_url = str(r.url)
                 body      = await r.text()
-                _LOGGER.debug(
-                    "POST %s → status=%s final_url=%s cookies=%s",
-                    post_url, r.status, final_url, [c.key for c in s.cookie_jar],
+                _LOGGER.warning(
+                    "Fresh-r login-page diagnosis — POST %s → HTTP %s | "
+                    "final_url=%s | cookies=%s | body[:1000]=\n%s",
+                    post_url, r.status, final_url,
+                    [c.key for c in s.cookie_jar], body[:1000],
                 )
 
                 # Hex token anywhere?
@@ -325,13 +339,43 @@ class FreshRApiClient:
                     return tok
 
                 # Landed on dashboard.bw-log.com → login succeeded (cookie-only auth).
-                # PHPSESSID will be returned by async_login() as the token value.
                 if "bw-log.com" in final_url:
                     _LOGGER.debug(
                         "Landed on dashboard (%s) — cookie-only auth. cookies=%s",
                         final_url, [c.key for c in s.cookie_jar],
                     )
                     return None
+
+                # JavaScript / meta-refresh redirect in the POST response body?
+                # Some PHP login pages respond with 200 + JS redirect instead of
+                # an HTTP 3xx.  aiohttp follows 3xx automatically but not JS.
+                js_url = _js_redirect(body)
+                if js_url:
+                    abs_js_url = urljoin(final_url, js_url)
+                    _LOGGER.debug("POST response contains JS redirect → %s", abs_js_url)
+                    try:
+                        async with s.get(
+                            abs_js_url, allow_redirects=True,
+                            timeout=aiohttp.ClientTimeout(total=15),
+                        ) as r2:
+                            final_url2 = str(r2.url)
+                            body2      = await r2.text()
+                            tok2 = (
+                                _token_in_headers(r2.headers) or
+                                _token_in_jar(s.cookie_jar) or
+                                _token_in_url(final_url2) or
+                                _token_in_html(body2)
+                            )
+                            if tok2:
+                                return tok2
+                            if "bw-log.com" in final_url2:
+                                _LOGGER.debug(
+                                    "Landed on dashboard via JS redirect (%s) — cookie-only auth.",
+                                    final_url2,
+                                )
+                                return None
+                    except aiohttp.ClientError as e:
+                        _LOGGER.debug("JS redirect GET failed: %s", e)
 
                 # Explicit server-side error in body?
                 if re.search(r'\b(invalid|incorrect|wrong|onjuist|fout)\b', body, re.I):
