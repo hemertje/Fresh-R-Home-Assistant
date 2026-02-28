@@ -21,6 +21,8 @@ CONF_INFLUX_PORT    = "influx_port"
 CONF_INFLUX_DB      = "influx_db"
 CONF_INFLUX_TOKEN   = "influx_token"
 CONF_INFLUX_ORG     = "influx_org"
+CONF_INFLUX_USER    = "influx_username"
+CONF_INFLUX_PASS    = "influx_password"
 
 SCHEMA = vol.Schema({
     vol.Required(CONF_EMAIL):                              str,
@@ -33,6 +35,8 @@ SCHEMA = vol.Schema({
     vol.Optional(CONF_INFLUX_DB,    default="homeassistant"): str,
     vol.Optional(CONF_INFLUX_TOKEN, default=""):           str,
     vol.Optional(CONF_INFLUX_ORG,   default=""):           str,
+    vol.Optional(CONF_INFLUX_USER,  default=""):           str,
+    vol.Optional(CONF_INFLUX_PASS,  default=""):           str,
 })
 
 
