@@ -233,28 +233,58 @@ class FreshRApiClient:
     # ── Login ──────────────────────────────────────────────────────────────────
 
     async def async_login(self) -> None:
-        """Authenticate and store session. Raises FreshRAuthError on failure."""
+        """Authenticate and store session token. Raises FreshRAuthError on failure."""
         s = self._get_session()
         token = await self._login_all(s)
 
         if not token:
-            # No hex token found — use PHPSESSID as the API token value.
-            # dashboard.bw-log.com authenticates via cookie; the JSON "token"
-            # field may be optional or accept the session ID.
-            phpsessid = _phpsessid_from_jar(s.cookie_jar)
-            if phpsessid:
-                _LOGGER.info(
-                    "No hex token found — using PHPSESSID as session token (%.8s…)", phpsessid
-                )
-                token = phpsessid
-            else:
-                raise FreshRAuthError(
-                    "Login failed — no session token or PHPSESSID received. "
-                    "Verify your credentials at fresh-r.me"
-                )
+            raise FreshRAuthError(
+                "Login failed — no session token received. "
+                "Verify your credentials at fresh-r.me"
+            )
 
         self._token = token
         _LOGGER.info("Fresh-r authenticated (token=%.8s…)", token)
+
+    async def _login_bearer_token(self, s: aiohttp.ClientSession) -> str | None:
+        """Authenticate using modern Fresh-r API and return Bearer token."""
+        from .const import API_URL
+        
+        try:
+            payload = {
+                "email": self._email,
+                "password": self._password
+            }
+            
+            _LOGGER.debug("Attempting Bearer token authentication to %s", API_URL)
+            
+            async with s.post(
+                API_URL,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Origin": "https://dashboard.bw-log.com",
+                    "Referer": "https://dashboard.bw-log.com/",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    token = data.get("token") or data.get("access_token")
+                    if token:
+                        _LOGGER.info("Bearer token received successfully")
+                        return token
+                
+                _LOGGER.warning(
+                    "Bearer token auth failed: HTTP %s | body=%s",
+                    r.status, await r.text()
+                )
+                return None
+                
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Bearer token auth error: %s", e)
+            return None
 
     async def _login_all(self, s: aiohttp.ClientSession) -> str | None:
         """Try each login URL in sequence; return first token found."""
@@ -315,9 +345,9 @@ class FreshRApiClient:
         try:
             async with s.post(
                 post_url,
-                data=form,
+                json=form,
                 headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Content-Type": "application/json",
                     "Origin":       _origin(login_url),
                     "Referer":      login_url,
                     "X-Requested-With": "XMLHttpRequest",
@@ -408,42 +438,46 @@ class FreshRApiClient:
     # ── Device discovery ───────────────────────────────────────────────────────
 
     async def async_discover_devices(self) -> list[dict]:
-        """Return all devices on this account.
-
-        Strategy:
-          1. Try the JSON API (syssearch + sysinfo).
-          2. If that yields nothing, fall back to scraping the devices page HTML
-             for serial numbers embedded in dashboard links.
-        """
-        # Strategy 1: JSON API
+        """Return all devices using modern Fresh-r API."""
+        from .const import API_DATA_URL
+        
         try:
-            raw = await self._call({
-                "user_units": {"request": "syssearch", "role": "user", "fields": ["units"]},
-            })
-            _LOGGER.warning("syssearch API response: %s", raw)
-            units = raw.get("user_units", {}).get("units", [])
-            if units:
-                sys_req = {
-                    u["id"]: {"request": "sysinfo", "id": u["id"], "fields": ["type", "room"]}
-                    for u in units
-                }
-                sys_raw = await self._call(sys_req)
-                devices = []
-                for u in units:
-                    uid  = u["id"]
-                    info = sys_raw.get(uid, {})
-                    devices.append({
-                        "id":   uid,
-                        "type": info.get("type", "Fresh-r"),
-                        "room": info.get("room", ""),
-                    })
-                _LOGGER.info("Discovered %d device(s) via API: %s", len(devices), [d["id"] for d in devices])
-                return devices
-        except (FreshRConnectionError, Exception) as e:  # noqa: BLE001
-            _LOGGER.warning("API device discovery failed (%s) — falling back to HTML scraping", e)
-
-        # Strategy 2: scrape the devices page for serial numbers in dashboard links
-        return await self._discover_from_html()
+            s = self._get_session()
+            headers = {"Authorization": f"Bearer {self._token}"}
+            
+            async with s.get(API_DATA_URL, headers=headers, 
+                             timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    _LOGGER.info("Modern API device discovery successful")
+                    
+                    # Parse device data from modern API response
+                    devices = []
+                    if isinstance(data, dict):
+                        for device_id, device_data in data.items():
+                            devices.append({
+                                "id": device_id,
+                                "type": device_data.get("type", "Fresh-r"),
+                                "room": device_data.get("room", ""),
+                            })
+                    elif isinstance(data, list):
+                        for device in data:
+                            devices.append({
+                                "id": device.get("id", device.get("serial", "unknown")),
+                                "type": device.get("type", "Fresh-r"),
+                                "room": device.get("room", ""),
+                            })
+                    
+                    _LOGGER.info("Discovered %d device(s) via modern API: %s", 
+                                len(devices), [d["id"] for d in devices])
+                    return devices
+                else:
+                    _LOGGER.error("Modern API device discovery failed: HTTP %s", r.status)
+                    return []
+                    
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Modern API device discovery error: %s", e)
+            return []
 
     async def _discover_from_html(self) -> list[dict]:
         """GET dashboard.bw-log.com/?page=devices and extract serial numbers."""
@@ -477,29 +511,70 @@ class FreshRApiClient:
     # ── Current data ───────────────────────────────────────────────────────────
 
     async def async_get_current(self, serial: str) -> dict[str, Any]:
-        """Fetch current sensor values for one device."""
+        """Fetch current sensor values for one device using modern API with legacy token."""
+        from .const import API_DATA_URL
+        
         if not self._token:
             await self.async_login()
+        
         try:
-            raw = await self._call({
-                "current-data": {
-                    "request": "fresh-r-now",
-                    "serial":  serial,
-                    "fields":  FIELDS_NOW,
-                }
-            })
-        except FreshRConnectionError:
-            _LOGGER.info("API error — re-authenticating")
-            self._token = None
-            await self.async_login()
-            raw = await self._call({
-                "current-data": {
-                    "request": "fresh-r-now",
-                    "serial":  serial,
-                    "fields":  FIELDS_NOW,
-                }
-            })
-        return self._parse(raw.get("current-data", {}))
+            s = self._get_session()
+            # Use the legacy token as Bearer token for modern API
+            headers = {"Authorization": f"Bearer {self._token}"}
+            
+            async with s.get(API_DATA_URL, headers=headers,
+                             timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    _LOGGER.debug("Modern API data received: %s", data)
+                    
+                    # Parse sensor data from modern API response
+                    if isinstance(data, dict) and serial in data:
+                        return self._parse_modern_api_data(data[serial])
+                    elif isinstance(data, list):
+                        for device in data:
+                            device_id = device.get("id", device.get("serial", ""))
+                            if device_id == serial:
+                                return self._parse_modern_api_data(device)
+                    
+                    _LOGGER.warning("Device %s not found in API response", serial)
+                    return {}
+                else:
+                    _LOGGER.error("Modern API data fetch failed: HTTP %s", r.status)
+                    return {}
+                    
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Modern API data fetch error: %s", e)
+            return {}
+
+    def _parse_modern_api_data(self, device_data: dict) -> dict[str, Any]:
+        """Parse sensor data from modern API response format."""
+        # Map modern API fields to our expected format
+        parsed = {}
+        
+        # Temperature sensors
+        for key in ["t1", "t2", "t3", "t4"]:
+            if key in device_data:
+                parsed[key] = device_data[key]
+        
+        # Other sensors
+        for key in ["flow", "co2", "hum", "dp"]:
+            if key in device_data:
+                parsed[key] = device_data[key]
+        
+        # PM sensors
+        for prefix in ["d1_", "d4_", "d5_"]:
+            for size in ["03", "1", "25"]:
+                key = f"{prefix}{size}"
+                if key in device_data:
+                    parsed[key] = device_data[key]
+        
+        # Calculated values
+        for key in ["heat_recovered", "vent_loss", "energy_loss"]:
+            if key in device_data:
+                parsed[key] = device_data[key]
+        
+        return parsed
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
