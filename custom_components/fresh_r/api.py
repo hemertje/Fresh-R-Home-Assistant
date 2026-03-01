@@ -320,6 +320,7 @@ class FreshRApiClient:
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Origin":       _origin(login_url),
                     "Referer":      login_url,
+                    "X-Requested-With": "XMLHttpRequest",
                 },
                 allow_redirects=True,
                 timeout=aiohttp.ClientTimeout(total=20),
