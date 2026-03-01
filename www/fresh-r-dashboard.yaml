@@ -1,0 +1,118 @@
+type: custom:grid-layout
+title: Fresh-r Dashboard
+path: fresh-r-dashboard
+badges: []
+cards:
+  # Header
+  - type: markdown
+    content: "# Fresh-r Ventilation System"
+    view_layout:
+      grid-area: "1/1/2/4"
+    
+  # Main Status Card
+  - type: entities
+    title: OTW + Filter
+    show_header_toggle: false
+    entities:
+      - entity: sensor.fresh_r_co2
+        name: CO2
+        icon: mdi:molecule-co2
+      - entity: sensor.fresh_r_humidity
+        name: Humidity
+        icon: mdi:water-percent
+      - entity: sensor.fresh_r_supply_pm25
+        name: PM2.5
+        icon: mdi:blur
+      - entity: sensor.fresh_r_indoor_temperature
+        name: Indoor Temperature
+        icon: mdi:home-thermometer
+      - entity: sensor.fresh_r_exhaust_temperature
+        name: Exhaust Temperature
+        icon: mdi:thermometer-chevron-down
+      - entity: sensor.fresh_r_flow_rate
+        name: Flow Rate
+        icon: mdi:air-filter
+    view_layout:
+      grid-area: "2/1/4/3"
+      
+  # Temperature Chart
+  - type: history-graph
+    title: Temperature Trends
+    hours_to_show: 24
+    refresh_interval: 60
+    entities:
+      - entity: sensor.fresh_r_indoor_temperature
+        name: Indoor
+      - entity: sensor.fresh_r_outdoor_temperature
+        name: Outdoor
+      - entity: sensor.fresh_r_supply_temperature
+        name: Supply
+      - entity: sensor.fresh_r_exhaust_temperature
+        name: Exhaust
+    view_layout:
+      grid-area: "2/3/4/5"
+      
+  # Air Quality Chart
+  - type: history-graph
+    title: Air Quality
+    hours_to_show: 24
+    refresh_interval: 60
+    entities:
+      - entity: sensor.fresh_r_co2
+        name: CO2
+      - entity: sensor.fresh_r_supply_pm25
+        name: Supply PM2.5
+      - entity: sensor.fresh_r_outdoor_pm25
+        name: Outdoor PM2.5
+      - entity: sensor.fresh_r_indoor_pm25
+        name: Indoor PM2.5
+    view_layout:
+      grid-area: "4/1/6/3"
+      
+  # Flow & Efficiency
+  - type: history-graph
+    title: Ventilation & Efficiency
+    hours_to_show: 24
+    refresh_interval: 60
+    entities:
+      - entity: sensor.fresh_r_flow_rate
+        name: Flow Rate
+      - entity: sensor.fresh_r_heat_recovered
+        name: Heat Recovered
+      - entity: sensor.fresh_r_ventilation_loss
+        name: Ventilation Loss
+    view_layout:
+      grid-area: "4/3/6/5"
+      
+  # Control Buttons
+  - type: entities
+    title: Controls
+    show_header_toggle: false
+    entities:
+      - entity: switch.fresh_r_boost
+        name: Boost Mode
+        icon: mdi:fast-forward
+      - entity: number.fresh_r_flow_setpoint
+        name: Flow Setpoint
+        icon: mdi:air-filter
+      - entity: button.fresh_r_report
+        name: Generate Report
+        icon: mdi:file-chart
+    view_layout:
+      grid-area: "6/1/7/5"
+      
+  # Statistics
+  - type: statistics-graph
+    title: 24h Statistics
+    chart_type: line
+    period: hour
+    stat_types:
+      - mean
+      - min
+      - max
+    entities:
+      - sensor.fresh_r_co2
+      - sensor.fresh_r_indoor_temperature
+      - sensor.fresh_r_flow_rate
+    view_layout:
+      grid-area: "7/1/8/5"
