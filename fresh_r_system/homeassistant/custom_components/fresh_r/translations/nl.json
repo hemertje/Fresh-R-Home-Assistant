@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Fresh-r instellen",
+        "description": "Voer je fresh-r.me inloggegevens in. Het apparaatserienummer wordt automatisch gevonden.",
+        "data": {
+          "email":           "E-mailadres",
+          "password":        "Wachtwoord",
+          "poll_interval":   "Verversinterval (seconden, min. 30)",
+          "mqtt_enabled":    "MQTT publiceren",
+          "influx_enabled":  "InfluxDB schrijven",
+          "influx_host":     "InfluxDB host",
+          "influx_port":     "InfluxDB poort",
+          "influx_db":       "Database / bucket",
+          "influx_token":    "InfluxDB token (v2; leeg voor v1)",
+          "influx_org":      "InfluxDB organisatie (v2)",
+          "influx_username": "InfluxDB gebruikersnaam (v1; optioneel)",
+          "influx_password": "InfluxDB wachtwoord (v1; optioneel)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth":   "Ongeldige inloggegevens",
+      "cannot_connect": "Kan niet verbinden met Fresh-r",
+      "no_devices":     "Geen Fresh-r apparaten gevonden voor dit account",
+      "unknown":        "Onbekende fout"
+    },
+    "abort": {
+      "already_configured": "Fresh-r is al geconfigureerd voor dit account"
+    }
+  }
+}
