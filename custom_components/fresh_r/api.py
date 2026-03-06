@@ -344,12 +344,7 @@ class FreshRApiClient:
         try:
             async with s.post(
                 post_url,
-                data=form,  # Form-urlencoded (not JSON) for HTML form submission
-                headers={
-                    "Origin":       _origin(login_url),
-                    "Referer":      login_url,
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+                data=form,  # Form-urlencoded for HTML form submission
                 allow_redirects=True,
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as r:
