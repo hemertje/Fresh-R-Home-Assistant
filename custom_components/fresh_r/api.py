@@ -333,9 +333,9 @@ class FreshRApiClient:
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
 
-        # Step 2 — POST credentials, follow the full redirect chain automatically.
-        # The fresh-r.me login form uses "email", "password", and "keep_logged_in" checkbox
-        form = {**hidden, "email": self._email, "password": self._password, "keep_logged_in": "1", "submit": "Login"}
+        # Step 2 — POST credentials (simplified - like yesterday's working version)
+        # Simple form with just email and password - no hidden fields needed
+        form = {"email": self._email, "password": self._password}
         _LOGGER.warning(
             "Fresh-r POST payload — url=%s fields=%s",
             post_url,
