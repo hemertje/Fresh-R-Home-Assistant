@@ -1,0 +1,313 @@
+# Fresh-R Home Assistant Dashboard Configuration
+# Add this to your Home Assistant configuration.yaml or use the UI to import
+
+title: Fresh-R Ventilatie
+views:
+  - title: Overzicht
+    icon: mdi:air-filter
+    cards:
+      # Header card with device info
+      - type: markdown
+        content: |
+          ## 🌬️ Fresh-R Ventilatie Systeem
+          Real-time monitoring van uw ventilatie en luchtkwaliteit
+
+      # Temperature sensors
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🌡️ Temperaturen
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.fresh_r_t1_indoor_temperature
+                name: Binnen
+                min: 0
+                max: 40
+                severity:
+                  green: 18
+                  yellow: 25
+                  red: 30
+              - type: gauge
+                entity: sensor.fresh_r_t2_outdoor_temperature
+                name: Buiten
+                min: -10
+                max: 40
+              - type: gauge
+                entity: sensor.fresh_r_t3_supply_temperature
+                name: Toevoer
+                min: 0
+                max: 40
+
+      # Air quality - CO2 and Humidity
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 💨 Luchtkwaliteit
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.fresh_r_co2
+                name: CO2
+                min: 400
+                max: 2000
+                severity:
+                  green: 400
+                  yellow: 800
+                  red: 1200
+              - type: gauge
+                entity: sensor.fresh_r_humidity
+                name: Luchtvochtigheid
+                min: 0
+                max: 100
+                severity:
+                  green: 30
+                  yellow: 60
+                  red: 80
+
+      # Particulate Matter (PM) sensors
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🌫️ Fijnstof (PM)
+          - type: entities
+            title: PM2.5 (µg/m³)
+            entities:
+              - entity: sensor.fresh_r_supply_pm2_5
+                name: Toevoer
+              - entity: sensor.fresh_r_outdoor_pm2_5
+                name: Buiten
+              - entity: sensor.fresh_r_indoor_pm2_5
+                name: Binnen
+
+      # Flow and derived metrics
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🔄 Ventilatie & Energie
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.fresh_r_flow_rate
+                name: Debiet
+                icon: mdi:air-filter
+              - type: entity
+                entity: sensor.fresh_r_heat_recovered
+                name: Warmteterugwinning
+                icon: mdi:heat-wave
+
+  - title: Details
+    icon: mdi:chart-line
+    cards:
+      # All sensors detailed view
+      - type: entities
+        title: Alle Sensoren
+        show_header_toggle: false
+        entities:
+          - type: section
+            label: Temperaturen
+          - sensor.fresh_r_t1_indoor_temperature
+          - sensor.fresh_r_t2_outdoor_temperature
+          - sensor.fresh_r_t3_supply_temperature
+          - sensor.fresh_r_t4_exhaust_temperature
+          - type: section
+            label: Luchtkwaliteit
+          - sensor.fresh_r_co2
+          - sensor.fresh_r_humidity
+          - sensor.fresh_r_dew_point
+          - type: section
+            label: Fijnstof PM2.5
+          - sensor.fresh_r_supply_pm2_5
+          - sensor.fresh_r_outdoor_pm2_5
+          - sensor.fresh_r_indoor_pm2_5
+          - type: section
+            label: Fijnstof PM1.0
+          - sensor.fresh_r_supply_pm1_0
+          - sensor.fresh_r_outdoor_pm1_0
+          - sensor.fresh_r_indoor_pm1_0
+          - type: section
+            label: Fijnstof PM0.3
+          - sensor.fresh_r_supply_pm0_3
+          - sensor.fresh_r_outdoor_pm0_3
+          - sensor.fresh_r_indoor_pm0_3
+          - type: section
+            label: Ventilatie & Energie
+          - sensor.fresh_r_flow_rate
+          - sensor.fresh_r_heat_recovered
+          - sensor.fresh_r_ventilation_loss
+          - sensor.fresh_r_energy_loss
+
+  - title: Grafieken
+    icon: mdi:chart-areaspline
+    cards:
+      # Date Range Selector
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Vandaag
+            icon: mdi:calendar-today
+            tap_action:
+              action: navigate
+              navigation_path: "?history_days=1"
+          - type: button
+            name: Week
+            icon: mdi:calendar-week
+            tap_action:
+              action: navigate
+              navigation_path: "?history_days=7"
+          - type: button
+            name: Maand
+            icon: mdi:calendar-month
+            tap_action:
+              action: navigate
+              navigation_path: "?history_days=30"
+          - type: button
+            name: Jaar
+            icon: mdi:calendar-range
+            tap_action:
+              action: navigate
+              navigation_path: "?history_days=365"
+
+      # Temperature history chart
+      - type: history-graph
+        title: 🌡️ Temperatuur Geschiedenis
+        entities:
+          - sensor.fresh_r_t1_indoor_temperature
+          - sensor.fresh_r_t2_outdoor_temperature
+          - sensor.fresh_r_t3_supply_temperature
+          - sensor.fresh_r_t4_exhaust_temperature
+        hours_to_show: 24
+        refresh_interval: 60
+
+      # CO2 and Humidity history
+      - type: history-graph
+        title: 💨 Luchtkwaliteit Geschiedenis
+        entities:
+          - sensor.fresh_r_co2
+          - sensor.fresh_r_humidity
+        hours_to_show: 24
+        refresh_interval: 60
+
+      # PM2.5 history
+      - type: history-graph
+        title: 🌫️ PM2.5 Geschiedenis
+        entities:
+          - sensor.fresh_r_supply_pm2_5
+          - sensor.fresh_r_outdoor_pm2_5
+          - sensor.fresh_r_indoor_pm2_5
+        hours_to_show: 24
+        refresh_interval: 60
+
+      # Flow and Energy history
+      - type: history-graph
+        title: 🔄 Ventilatie & Energie Geschiedenis
+        entities:
+          - sensor.fresh_r_flow_rate
+          - sensor.fresh_r_heat_recovered
+          - sensor.fresh_r_ventilation_loss
+        hours_to_show: 24
+        refresh_interval: 60
+
+  # Fresh-R style calendar view with specific date picker
+  - title: Kalender
+    icon: mdi:calendar
+    cards:
+      - type: markdown
+        content: |
+          ## 📅 Fresh-R Kalender Overzicht
+          Selecteer een specifieke datum of periode om historische data te bekijken
+
+      # Specific Date Picker using input_datetime
+      - type: entities
+        title: 📅 Specifieke Datum Selectie
+        entities:
+          - entity: input_datetime.fresh_r_start_date
+            name: Start Datum
+          - entity: input_datetime.fresh_r_end_date
+            name: Eind Datum
+          - entity: input_button.fresh_r_update_graphs
+            name: Grafieken Updaten
+
+      # Date range quick selectors
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Gisteren
+            icon: mdi:calendar-arrow-left
+            tap_action:
+              action: call-service
+              service: input_datetime.set_datetime
+              service_data:
+                entity_id: input_datetime.fresh_r_start_date
+                date: "{{ (now() - timedelta(days=1)).strftime('%Y-%m-%d') }}"
+          - type: button
+            name: Vorige Week
+            icon: mdi:calendar-week
+            tap_action:
+              action: call-service
+              service: input_datetime.set_datetime
+              service_data:
+                entity_id: input_datetime.fresh_r_start_date
+                date: "{{ (now() - timedelta(days=7)).strftime('%Y-%m-%d') }}"
+          - type: button
+            name: Vorige Maand
+            icon: mdi:calendar-month
+            tap_action:
+              action: call-service
+              service: input_datetime.set_datetime
+              service_data:
+                entity_id: input_datetime.fresh_r_start_date
+                date: "{{ (now() - timedelta(days=30)).strftime('%Y-%m-%d') }}"
+
+      # Weekly overview graph
+      - type: history-graph
+        title: 📊 Geselecteerde Periode (1 Week)
+        entities:
+          - sensor.fresh_r_t1_indoor_temperature
+          - sensor.fresh_r_t2_outdoor_temperature
+          - sensor.fresh_r_co2
+          - sensor.fresh_r_humidity
+          - sensor.fresh_r_d5_25
+        hours_to_show: 168  # 1 week default
+        refresh_interval: 60
+
+      # Monthly overview
+      - type: history-graph
+        title: 📈 Maand Overzicht
+        entities:
+          - sensor.fresh_r_t1_indoor_temperature
+          - sensor.fresh_r_co2
+          - sensor.fresh_r_flow_rate
+        hours_to_show: 720  # 30 days
+        refresh_interval: 300
+
+# Entity customization
+customize:
+  sensor.fresh_r_t1_indoor_temperature:
+    friendly_name: Binnen Temperatuur
+    icon: mdi:home-thermometer
+  sensor.fresh_r_t2_outdoor_temperature:
+    friendly_name: Buiten Temperatuur
+    icon: mdi:thermometer
+  sensor.fresh_r_t3_supply_temperature:
+    friendly_name: Toevoer Temperatuur
+    icon: mdi:thermometer-chevron-up
+  sensor.fresh_r_t4_exhaust_temperature:
+    friendly_name: Afvoer Temperatuur
+    icon: mdi:thermometer-chevron-down
+  sensor.fresh_r_co2:
+    friendly_name: CO2 Niveau
+    icon: mdi:molecule-co2
+  sensor.fresh_r_humidity:
+    friendly_name: Luchtvochtigheid
+    icon: mdi:water-percent
+  sensor.fresh_r_flow_rate:
+    friendly_name: Ventilatie Debiet
+    icon: mdi:air-filter
+  sensor.fresh_r_heat_recovered:
+    friendly_name: Warmteterugwinning
+    icon: mdi:heat-wave

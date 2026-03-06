@@ -1,0 +1,193 @@
+# Fresh-r Home Assistant Dashboard
+# Replica van het Fresh-R.me dashboard
+#
+# Installatie:
+#   1. Ga in HA naar Instellingen → Dashboards → Dashboard toevoegen
+#   2. Kies "YAML" en plak de inhoud hieronder
+#   OF gebruik het Raw configuratie-editor in de bestaande dashboard
+#
+# Vereisten:
+#   - Fresh-r integratie actief (Instellingen → Apparaten & diensten → Fresh-r)
+#   - custom:fresh-r-card geïnstalleerd via www/fresh-r-card.js
+#     (kopieer fresh-r-card.js naar <config>/www/ en voeg toe aan Lovelace resources)
+#
+# Resources toe te voegen in Lovelace (of in configuration.yaml):
+#   lovelace:
+#     resources:
+#       - url: /local/fresh-r-card.js
+#         type: module
+
+title: Fresh-r
+views:
+  # ── Hoofddashboard (replica Fresh-R.me) ──────────────────────────────────────
+  - title: Dashboard
+    path: fresh-r
+    icon: mdi:air-filter
+    badges: []
+    cards:
+      - type: custom:fresh-r-card
+        entities:
+          t1:             sensor.fresh_r_indoor_temperature
+          t2:             sensor.fresh_r_outdoor_temperature
+          t3:             sensor.fresh_r_supply_temperature
+          t4:             sensor.fresh_r_exhaust_temperature
+          flow:           sensor.fresh_r_flow_rate
+          co2:            sensor.fresh_r_co2
+          hum:            sensor.fresh_r_humidity
+          dp:             sensor.fresh_r_dew_point
+          d5_25:          sensor.fresh_r_supply_pm2_5
+          d4_25:          sensor.fresh_r_outdoor_pm2_5
+          d1_25:          sensor.fresh_r_indoor_pm2_5
+          heat_recovered: sensor.fresh_r_heat_recovered
+          vent_loss:      sensor.fresh_r_ventilation_loss
+          energy_loss:    sensor.fresh_r_energy_loss
+
+  # ── Sensoren ─────────────────────────────────────────────────────────────────
+  - title: Sensoren
+    path: fresh-r-sensoren
+    icon: mdi:thermometer
+    badges: []
+    cards:
+      - type: entities
+        title: Temperaturen
+        show_header_toggle: false
+        entities:
+          - entity: sensor.fresh_r_indoor_temperature
+            name: Binnentemperatuur
+            icon: mdi:home-thermometer
+          - entity: sensor.fresh_r_outdoor_temperature
+            name: Buitentemperatuur
+            icon: mdi:thermometer
+          - entity: sensor.fresh_r_supply_temperature
+            name: Aanvoertemperatuur
+            icon: mdi:thermometer-chevron-up
+          - entity: sensor.fresh_r_exhaust_temperature
+            name: Afvoertemperatuur
+            icon: mdi:thermometer-chevron-down
+
+      - type: entities
+        title: Luchtkwaliteit
+        show_header_toggle: false
+        entities:
+          - entity: sensor.fresh_r_co2
+            name: CO2
+            icon: mdi:molecule-co2
+          - entity: sensor.fresh_r_humidity
+            name: Vochtigheid
+            icon: mdi:water-percent
+          - entity: sensor.fresh_r_dew_point
+            name: Dauwpunt
+            icon: mdi:water-thermometer
+          - entity: sensor.fresh_r_flow_rate
+            name: Debiet
+            icon: mdi:air-filter
+
+      - type: entities
+        title: Fijnstof (PM)
+        show_header_toggle: false
+        entities:
+          - entity: sensor.fresh_r_supply_pm2_5
+            name: Aanvoer PM2.5
+            icon: mdi:blur
+          - entity: sensor.fresh_r_outdoor_pm2_5
+            name: Buiten PM2.5
+            icon: mdi:blur
+          - entity: sensor.fresh_r_indoor_pm2_5
+            name: Binnen PM2.5
+            icon: mdi:blur
+          - entity: sensor.fresh_r_supply_pm0_3
+            name: Aanvoer PM0.3
+            icon: mdi:blur-radial
+          - entity: sensor.fresh_r_outdoor_pm0_3
+            name: Buiten PM0.3
+            icon: mdi:blur-radial
+          - entity: sensor.fresh_r_indoor_pm0_3
+            name: Binnen PM0.3
+            icon: mdi:blur-radial
+          - entity: sensor.fresh_r_supply_pm1_0
+            name: Aanvoer PM1.0
+            icon: mdi:blur-linear
+          - entity: sensor.fresh_r_outdoor_pm1_0
+            name: Buiten PM1.0
+            icon: mdi:blur-linear
+          - entity: sensor.fresh_r_indoor_pm1_0
+            name: Binnen PM1.0
+            icon: mdi:blur-linear
+
+      - type: entities
+        title: Energie
+        show_header_toggle: false
+        entities:
+          - entity: sensor.fresh_r_heat_recovered
+            name: Warmteterugwinning
+            icon: mdi:heat-wave
+          - entity: sensor.fresh_r_ventilation_loss
+            name: Referentie ventilatieverl.
+            icon: mdi:transmission-tower
+          - entity: sensor.fresh_r_energy_loss
+            name: Energieverlies
+            icon: mdi:lightning-bolt
+
+  # ── Grafieken (24h — History uit HA recorder) ─────────────────────────────────
+  - title: Grafieken
+    path: fresh-r-grafieken
+    icon: mdi:chart-line
+    badges: []
+    cards:
+      - type: history-graph
+        title: Temperaturen (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_indoor_temperature
+            name: Binnenlucht
+          - entity: sensor.fresh_r_outdoor_temperature
+            name: Buitenlucht
+          - entity: sensor.fresh_r_supply_temperature
+            name: Aanvoer
+          - entity: sensor.fresh_r_exhaust_temperature
+            name: Afvoer
+
+      - type: history-graph
+        title: Debiet (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_flow_rate
+            name: Debiet (m³/h)
+
+      - type: history-graph
+        title: CO2 (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_co2
+            name: CO2 (ppm)
+
+      - type: history-graph
+        title: Vochtigheid & Dauwpunt (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_humidity
+            name: Vochtigheid (%)
+          - entity: sensor.fresh_r_dew_point
+            name: Dauwpunt (°C)
+
+      - type: history-graph
+        title: Warmte (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_heat_recovered
+            name: Warmteterugwinning (W)
+          - entity: sensor.fresh_r_ventilation_loss
+            name: Ref ventilatieverl. (W)
+          - entity: sensor.fresh_r_energy_loss
+            name: Energieverlies (W)
+
+      - type: history-graph
+        title: PM2.5 Fijnstof (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_supply_pm2_5
+            name: Aanvoer
+          - entity: sensor.fresh_r_outdoor_pm2_5
+            name: Buiten
+          - entity: sensor.fresh_r_indoor_pm2_5
+            name: Binnen

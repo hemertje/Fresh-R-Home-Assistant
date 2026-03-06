@@ -1,4 +1,5 @@
 """Fresh-r integration constants."""
+from __future__ import annotations
 DOMAIN           = "fresh_r"
 MANUFACTURER     = "Fresh-r"
 MODEL            = "OTW + Filter"
@@ -6,8 +7,8 @@ DEFAULT_POLL     = 60      # seconds
 MIN_POLL         = 30
 
 # API
-API_URL     = "https://api.fresh-r.dev/v1/auth/login"
-API_BASE    = "https://api.fresh-r.dev"
+API_URL     = "https://dashboard.bw-log.com/api.php"
+API_BASE    = "https://dashboard.bw-log.com"
 API_DATA_URL = "https://api.fresh-r.dev/v1/dashboard/devices/all/status"
 
 # Login: tried in sequence until success
