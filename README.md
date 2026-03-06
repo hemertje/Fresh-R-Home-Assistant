@@ -64,26 +64,31 @@ energy_loss    = max(0, (t1 − t4) × flow  × 1212 / 3600)  W
 ## Repository Structure
 
 ```
-Fresh-R-Home-Assistant/
-├── custom_components/fresh_r/     # Home Assistant custom component
-│   ├── __init__.py                #   Entry setup, MQTT init, coordinator wiring
-│   ├── api.py                     #   HTTP client: login, device discovery, _parse()
-│   ├── config_flow.py             #   UI config flow (email + password only)
-│   ├── const.py                   #   All constants and sensor definitions
-│   ├── coordinator.py             #   DataUpdateCoordinator + InfluxDB write
-│   ├── mqtt.py                    #   MQTT auto-discovery + state publishing
-│   ├── sensor.py                  #   HA sensor entity platform
-│   ├── manifest.json
-│   ├── strings.json
-│   └── translations/
-│       ├── nl.json
-│       └── en.json
-├── www/
-│   └── fresh-r-card.js            # Custom Lovelace card
+fresh_r.zip/
+├── fresh-r/                    # Home Assistant integration
+│   ├── custom_components/fresh_r/  # Integration code
+│   │   ├── __init__.py
+│   │   ├── api.py                 # HTTP client: login, device discovery
+│   │   ├── config_flow.py         # UI config flow
+│   │   ├── const.py               # Constants and sensor definitions
+│   │   ├── coordinator.py         # DataUpdateCoordinator
+│   │   ├── manifest.json
+│   │   ├── mqtt.py                # MQTT publishing
+│   │   ├── sensor.py              # HA sensor entities
+│   │   ├── strings.json
+│   │   └── translations/
+│   │       ├── en.json
+│   │       └── nl.json
+│   └── www/                       # Lovelace card
+│       ├── fresh-r-card.js
+│       └── fresh-r-dashboard.yaml
 ├── grafana/
 │   └── fresh_r_dashboard.json     # Grafana dashboard (import-ready)
-├── fresh_r_lovelace_dashboard.yaml # Home Assistant dashboard YAML
-└── validate_and_simulate.py       # Offline validation + simulation script
+├── docs/                          # Documentation
+│   ├── FAQ_EN.md
+│   └── FAQ_NL.md
+├── README.md
+└── LICENSE
 ```
 
 ---
@@ -92,7 +97,7 @@ Fresh-R-Home-Assistant/
 
 ### 0 — Download
 
-Download `fresh_r_system.zip` from the repository and extract it. This creates a `fresh-r/` folder containing all files.
+Download `fresh_r.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it. This creates a `fresh-r/` folder containing Home Assistant files, and a `grafana/` folder with the dashboard.
 
 ### 1 — Copy the custom component
 
@@ -103,7 +108,7 @@ cp -r fresh-r/custom_components/fresh_r  <HA-config>/custom_components/
 ### 2 — Install the Lovelace card
 
 ```bash
-cp www/fresh-r-card.js  <HA-config>/www/
+cp -r fresh-r/www/fresh-r-card.js  <HA-config>/www/
 ```
 
 Add the resource via **Settings → Dashboards → Resources → Add resource**:
@@ -148,12 +153,14 @@ The device serial number is **discovered automatically** — you never need to e
 ### 5 — Import the dashboards
 
 **Home Assistant Lovelace**
-1. Settings → Dashboards → Add Dashboard → Raw configuration editor
-2. Paste the contents of `fresh_r_lovelace_dashboard.yaml`
+1. Create a new dashboard: Settings → Dashboards → Add Dashboard
+2. Click the three dots menu → Edit dashboard
+3. Click three dots again → Raw configuration editor
+4. Paste the contents from the `fresh-r/www/fresh-r-dashboard.yaml` file
 
 **Grafana**
 1. Dashboards → Import → Upload JSON file
-2. Select `grafana/fresh_r_dashboard.json`
+2. Select `grafana/fresh_r_dashboard.json` (from the extracted ZIP root)
 3. Choose your InfluxDB datasource
 
 ---
@@ -211,27 +218,6 @@ The card has three tab views matching the Fresh-r.me dashboard:
 
 Line charts use Home Assistant's own recorder history (today's data, builds from the moment the integration is active).
 
----
-
-## Validation & Simulation
-
-Run offline without Home Assistant to verify all components:
-
-```bash
-python3 validate_and_simulate.py
-```
-
-**10 test steps:**
-1. Python syntax validation (all `.py` files)
-2. JSON validation (manifest, strings, translations, Grafana)
-3. Manifest required-fields check
-4. `const.py` — all 20 sensor definitions present
-5. `api.py` — flow calibration accuracy + physics formulas
-6. MQTT topic generation + full 20-field payload simulation
-7. InfluxDB line-protocol construction
-8. Grafana dashboard — all required panels present
-9. Lovelace YAML — views and `custom:fresh-r-card` present
-10. Sensor entity ID consistency map
 
 ---
 
