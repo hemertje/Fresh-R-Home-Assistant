@@ -334,8 +334,8 @@ class FreshRApiClient:
             _LOGGER.warning("GET %s failed: %s", login_url, e)
 
         # Step 2 — POST credentials, follow the full redirect chain automatically.
-        # The fresh-r.me login form only uses "email", "password", and "keep_logged_in"
-        form = {**hidden, "email": self._email, "password": self._password}
+        # The fresh-r.me login form uses "email", "password", and "keep_logged_in" checkbox
+        form = {**hidden, "email": self._email, "password": self._password, "keep_logged_in": ""}
         _LOGGER.warning(
             "Fresh-r POST payload — url=%s fields=%s",
             post_url,
