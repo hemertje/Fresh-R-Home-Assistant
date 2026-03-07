@@ -223,25 +223,38 @@ Line charts use Home Assistant's own recorder history (today's data, builds from
 
 ## Authentication
 
-Login flow (confirmed via browser DevTools):
+Login flow (discovered via browser DevTools, March 2026):
 
 ```
 1. GET  fresh-r.me/login/index.php?page=login
-        → collect hidden CSRF fields from the login form
+        → establish PHPSESSID cookie
 
-2. POST credentials (email + password + hidden fields)
-        → server validates and returns HTTP 302
+2. POST credentials to fresh-r.me/login/api/auth.php
+        → JSON response: {"authenticated": true, "auth_token": "<64-char-hex>"}
+        
+        Required headers:
+        - X-Requested-With: XMLHttpRequest
+        - Origin: https://fresh-r.me
+        - Referer: https://fresh-r.me/login/index.php?page=login
+        - Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 
-3. Redirect → dashboard.bw-log.com/?page=devices&t=<64-char-hex-token>
-        → the token in the URL (?t=) is the session token
+3. Token stored; all API calls use:
+        POST dashboard.bw-log.com/api.php?q={"token":"<auth_token>","requests":{...}}
+        
+        Required headers:
+        - X-Requested-With: XMLHttpRequest
+        - Origin: https://dashboard.bw-log.com
+        - Referer: https://dashboard.bw-log.com/?page=devices
 
-4. Token stored; all API calls use:
-        POST dashboard.bw-log.com/api.php?q={"token":"<hex>","requests":{...}}
-
-5. Serial number discovered automatically via the API (syssearch request)
+4. Device serial discovered via dashboard HTML scraping
+   (e.g., serial=e:232212/180027 from device links)
 ```
 
-The integration uses a **persistent `aiohttp.ClientSession`** for the lifetime of the config entry and follows all redirects automatically, so the token is captured from the final URL after login.
+**Important Notes:**
+- The `auth_token` expires every **75 minutes** - the integration automatically re-authenticates
+- Rate limiting: max ~10 login attempts per time period
+- The old form action (`/login/index.php?page=login`) does NOT work for automated login
+- Server requires `X-Requested-With: XMLHttpRequest` header to accept API requests
 
 ---
 

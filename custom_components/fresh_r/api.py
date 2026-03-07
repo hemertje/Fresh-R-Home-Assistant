@@ -233,58 +233,28 @@ class FreshRApiClient:
     # ── Login ──────────────────────────────────────────────────────────────────
 
     async def async_login(self) -> None:
-        """Authenticate and store session token. Raises FreshRAuthError on failure."""
+        """Authenticate and store session. Raises FreshRAuthError on failure."""
         s = self._get_session()
         token = await self._login_all(s)
 
         if not token:
-            raise FreshRAuthError(
-                "Login failed — no session token received. "
-                "Verify your credentials at fresh-r.me"
-            )
+            # No hex token found — use PHPSESSID as the API token value.
+            # dashboard.bw-log.com authenticates via cookie; the JSON "token"
+            # field may be optional or accept the session ID.
+            phpsessid = _phpsessid_from_jar(s.cookie_jar)
+            if phpsessid:
+                _LOGGER.info(
+                    "No hex token found — using PHPSESSID as session token (%.8s…)", phpsessid
+                )
+                token = phpsessid
+            else:
+                raise FreshRAuthError(
+                    "Login failed — no session token or PHPSESSID received. "
+                    "Verify your credentials at fresh-r.me"
+                )
 
         self._token = token
         _LOGGER.info("Fresh-r authenticated (token=%.8s…)", token)
-
-    async def _login_bearer_token(self, s: aiohttp.ClientSession) -> str | None:
-        """Authenticate using modern Fresh-r API and return Bearer token."""
-        from .const import API_URL
-        
-        try:
-            payload = {
-                "email": self._email,
-                "password": self._password
-            }
-            
-            _LOGGER.debug("Attempting Bearer token authentication to %s", API_URL)
-            
-            async with s.post(
-                API_URL,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "Origin": "https://dashboard.bw-log.com",
-                    "Referer": "https://dashboard.bw-log.com/",
-                },
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    token = data.get("token") or data.get("access_token")
-                    if token:
-                        _LOGGER.info("Bearer token received successfully")
-                        return token
-                
-                _LOGGER.warning(
-                    "Bearer token auth failed: HTTP %s | body=%s",
-                    r.status, await r.text()
-                )
-                return None
-                
-        except aiohttp.ClientError as e:
-            _LOGGER.error("Bearer token auth error: %s", e)
-            return None
 
     async def _login_all(self, s: aiohttp.ClientSession) -> str | None:
         """Try each login URL in sequence; return first token found."""
@@ -304,86 +274,116 @@ class FreshRApiClient:
         _LOGGER.warning("All login URLs exhausted. Last error: %s", last_err)
         return None
 
-    async def _login_one(self, s: aiohttp.ClientSession, login_url: str) -> str | None:
-        """Simple login: POST email+password, follow redirects, extract token from URL."""
+    async def _login_one(self, s: aiohttp.ClientSession, login_page_url: str) -> str | None:
+        """POST credentials to auth API endpoint and extract auth_token from JSON response.
         
-        # Get the login page first (to establish session)
-        async with s.get(login_url, allow_redirects=True) as r:
-            await r.text()  # Consume response
+        The correct login endpoint is /login/api/auth.php (not the form action).
+        Returns the auth_token from JSON response {"authenticated": true, "auth_token": "..."}
+        """
         
-        # Simple form POST
+        # The CORRECT login API endpoint (discovered via browser DevTools)
+        login_api_url = "https://fresh-r.me/login/api/auth.php"
+        
+        # Step 1 — GET login page to establish PHPSESSID cookie
+        try:
+            async with s.get(login_page_url, allow_redirects=True,
+                             timeout=aiohttp.ClientTimeout(total=15)) as r:
+                await r.text()  # Consume response
+        except aiohttp.ClientError as e:
+            _LOGGER.warning("GET %s failed: %s", login_page_url, e)
+
+        # Step 2 — POST credentials to the API endpoint
         form = {"email": self._email, "password": self._password}
         
-        async with s.post(
-            login_url,
-            data=form,
-            allow_redirects=True,
-        ) as r:
-            final_url = str(r.url)
-            
-            # Check for token in URL
-            match = re.search(r'[?&]t=([a-f0-9]{64})', final_url, re.I)
-            if match:
-                return match.group(1)
-            
-            # If we reached dashboard, we have cookie auth
-            if "dashboard.bw-log.com" in final_url:
+        try:
+            async with s.post(
+                login_api_url,
+                data=form,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "Origin":       "https://fresh-r.me",
+                    "Referer":      login_page_url,
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept":       "*/*",
+                    "Accept-Encoding": "gzip, deflate",  # No brotli
+                },
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                body = await r.text()
+                _LOGGER.debug("Login API response: %s", body[:200])
+                
+                if r.status == 200:
+                    try:
+                        data = json.loads(body)
+                        if data.get("authenticated") == True and "auth_token" in data:
+                            auth_token = data["auth_token"]
+                            _LOGGER.info("Login successful - auth_token received")
+                            return auth_token
+                        elif data.get("authenticated") == False:
+                            msg = data.get("message", "Unknown error")
+                            _LOGGER.warning("Login failed: %s", msg)
+                            if "Too many login attempts" in msg:
+                                raise FreshRAuthError(f"Rate limited: {msg}")
+                            return None
+                    except json.JSONDecodeError:
+                        _LOGGER.warning("Login response is not valid JSON: %s", body[:100])
+                        
                 return None
-            
-            # Still on login page = failed
-            if "page=login" in final_url:
-                raise FreshRAuthError("Login failed - check credentials")
-            
-            return None
+
+        except aiohttp.ClientError as e:
+            raise FreshRConnectionError(str(e)) from e
 
     # ── Device discovery ───────────────────────────────────────────────────────
 
     async def async_discover_devices(self) -> list[dict]:
-        """Return all devices using modern Fresh-r API."""
-        from .const import API_DATA_URL
-        
+        """Return all devices on this account.
+
+        Strategy:
+          1. Try the JSON API (syssearch + sysinfo).
+          2. If that yields nothing, fall back to scraping the devices page HTML
+             for serial numbers embedded in dashboard links.
+        """
+        # Strategy 1: JSON API
         try:
-            s = self._get_session()
-            headers = {"Authorization": f"Bearer {self._token}"}
-            
-            async with s.get(API_DATA_URL, headers=headers, 
-                             timeout=aiohttp.ClientTimeout(total=15)) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    _LOGGER.info("Modern API device discovery successful")
-                    
-                    # Parse device data from modern API response
-                    devices = []
-                    if isinstance(data, dict):
-                        for device_id, device_data in data.items():
-                            devices.append({
-                                "id": device_id,
-                                "type": device_data.get("type", "Fresh-r"),
-                                "room": device_data.get("room", ""),
-                            })
-                    elif isinstance(data, list):
-                        for device in data:
-                            devices.append({
-                                "id": device.get("id", device.get("serial", "unknown")),
-                                "type": device.get("type", "Fresh-r"),
-                                "room": device.get("room", ""),
-                            })
-                    
-                    _LOGGER.info("Discovered %d device(s) via modern API: %s", 
-                                len(devices), [d["id"] for d in devices])
-                    return devices
-                else:
-                    _LOGGER.error("Modern API device discovery failed: HTTP %s", r.status)
-                    return []
-                    
-        except aiohttp.ClientError as e:
-            _LOGGER.error("Modern API device discovery error: %s", e)
-            return []
+            raw = await self._call({
+                "user_units": {"request": "syssearch", "role": "user", "fields": ["units"]},
+            })
+            units = raw.get("user_units", {}).get("units", [])
+            if units:
+                sys_req = {
+                    u["id"]: {"request": "sysinfo", "id": u["id"], "fields": ["type", "room"]}
+                    for u in units
+                }
+                sys_raw = await self._call(sys_req)
+                devices = []
+                for u in units:
+                    uid  = u["id"]
+                    info = sys_raw.get(uid, {})
+                    devices.append({
+                        "id":   uid,
+                        "type": info.get("type", "Fresh-r"),
+                        "room": info.get("room", ""),
+                    })
+                _LOGGER.info("Discovered %d device(s) via API: %s", len(devices), [d["id"] for d in devices])
+                return devices
+        except (FreshRConnectionError, Exception) as e:  # noqa: BLE001
+            _LOGGER.warning("API device discovery failed (%s) — falling back to HTML scraping", e)
+
+        # Strategy 2: scrape the devices page for serial numbers in dashboard links
+        return await self._discover_from_html()
 
     async def _discover_from_html(self) -> list[dict]:
         """GET dashboard.bw-log.com/?page=devices and extract serial numbers."""
         s = self._get_session()
         devices_url = f"{API_BASE}/?page=devices"
+        
+        # Add auth_token as cookie for dashboard access
+        from yarl import URL
+        s.cookie_jar.update_cookies(
+            {"auth_token": self._token or ""},
+            URL("https://dashboard.bw-log.com")
+        )
+        
         try:
             async with s.get(devices_url, allow_redirects=True,
                              timeout=aiohttp.ClientTimeout(total=15)) as r:
@@ -399,7 +399,7 @@ class FreshRApiClient:
                 serials = _serials_in_html(html)
                 if not serials:
                     _LOGGER.warning(
-                        "No serial numbers found on devices page. Body[:3000]=\n%s", html[:3000]
+                        "No serial numbers found on devices page. Body snippet: %.500s", html[:500]
                     )
                     return []
 
@@ -412,70 +412,29 @@ class FreshRApiClient:
     # ── Current data ───────────────────────────────────────────────────────────
 
     async def async_get_current(self, serial: str) -> dict[str, Any]:
-        """Fetch current sensor values for one device using modern API with legacy token."""
-        from .const import API_DATA_URL
-        
+        """Fetch current sensor values for one device."""
         if not self._token:
             await self.async_login()
-        
         try:
-            s = self._get_session()
-            # Use the legacy token as Bearer token for modern API
-            headers = {"Authorization": f"Bearer {self._token}"}
-            
-            async with s.get(API_DATA_URL, headers=headers,
-                             timeout=aiohttp.ClientTimeout(total=15)) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    _LOGGER.debug("Modern API data received: %s", data)
-                    
-                    # Parse sensor data from modern API response
-                    if isinstance(data, dict) and serial in data:
-                        return self._parse_modern_api_data(data[serial])
-                    elif isinstance(data, list):
-                        for device in data:
-                            device_id = device.get("id", device.get("serial", ""))
-                            if device_id == serial:
-                                return self._parse_modern_api_data(device)
-                    
-                    _LOGGER.warning("Device %s not found in API response", serial)
-                    return {}
-                else:
-                    _LOGGER.error("Modern API data fetch failed: HTTP %s", r.status)
-                    return {}
-                    
-        except aiohttp.ClientError as e:
-            _LOGGER.error("Modern API data fetch error: %s", e)
-            return {}
-
-    def _parse_modern_api_data(self, device_data: dict) -> dict[str, Any]:
-        """Parse sensor data from modern API response format."""
-        # Map modern API fields to our expected format
-        parsed = {}
-        
-        # Temperature sensors
-        for key in ["t1", "t2", "t3", "t4"]:
-            if key in device_data:
-                parsed[key] = device_data[key]
-        
-        # Other sensors
-        for key in ["flow", "co2", "hum", "dp"]:
-            if key in device_data:
-                parsed[key] = device_data[key]
-        
-        # PM sensors
-        for prefix in ["d1_", "d4_", "d5_"]:
-            for size in ["03", "1", "25"]:
-                key = f"{prefix}{size}"
-                if key in device_data:
-                    parsed[key] = device_data[key]
-        
-        # Calculated values
-        for key in ["heat_recovered", "vent_loss", "energy_loss"]:
-            if key in device_data:
-                parsed[key] = device_data[key]
-        
-        return parsed
+            raw = await self._call({
+                "current-data": {
+                    "request": "fresh-r-now",
+                    "serial":  serial,
+                    "fields":  FIELDS_NOW,
+                }
+            })
+        except FreshRConnectionError:
+            _LOGGER.info("API error — re-authenticating")
+            self._token = None
+            await self.async_login()
+            raw = await self._call({
+                "current-data": {
+                    "request": "fresh-r-now",
+                    "serial":  serial,
+                    "fields":  FIELDS_NOW,
+                }
+            })
+        return self._parse(raw.get("current-data", {}))
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -485,7 +444,7 @@ class FreshRApiClient:
         return str(abs(int(off.total_seconds() / 60))) if off else "0"
 
     async def _call(self, requests: dict[str, Any]) -> dict[str, Any]:
-        """POST to api.php using the persistent session (PHPSESSID cookie included)."""
+        """POST to api.php using the auth_token and proper headers."""
         s = self._get_session()
         q = json.dumps({
             "token":    self._token or "",
@@ -494,7 +453,13 @@ class FreshRApiClient:
         })
         try:
             async with s.post(
-                API_URL, params={"q": q},
+                API_URL, 
+                params={"q": q},
+                headers={
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Origin": "https://dashboard.bw-log.com",
+                    "Referer": "https://dashboard.bw-log.com/?page=devices",
+                },
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
                 if r.status != 200:
