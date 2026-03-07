@@ -22,21 +22,33 @@ Derived sensors (dashboard_data.js physics):
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any
-from urllib.parse import urljoin, parse_qs, urlparse
+from datetime import datetime, timezone, timedelta
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import aiohttp
+from yarl import URL
 
 from .const import (
-    API_URL, API_BASE, LOGIN_URLS,
+    API_BASE,
+    API_URL,
     FIELDS_NOW,
-    FLOW_THRESHOLD, FLOW_OFFSET, FLOW_DIVISOR, FLOW_BASE,
-    AIR_HEAT_CAP, REF_FLOW,
+    FLOW_BASE,
+    FLOW_DIVISOR,
+    FLOW_OFFSET,
+    FLOW_THRESHOLD,
+    LOGIN_URLS,
+    REF_FLOW,
+    AIR_HEAT_CAP,
 )
+
+# Token expires after 75 minutes (4500 seconds)
+TOKEN_EXPIRY_SECONDS = 4500
+# Proactively refresh 5 minutes before expiry
+TOKEN_REFRESH_SECONDS = 300
 
 _LOGGER     = logging.getLogger(__name__)
 _TOKEN_RE   = re.compile(r'^[0-9a-f]{32,}$', re.I)
@@ -211,6 +223,7 @@ class FreshRApiClient:
         # ha_session kept only for backward-compatibility; not used for API calls
         self._ha_session = ha_session
         self._token: str | None = None
+        self._token_time: datetime | None = None  # Track when token was obtained
         # Persistent session — preserves cookies (PHPSESSID) across requests
         self._session: aiohttp.ClientSession | None = None
 
@@ -254,6 +267,7 @@ class FreshRApiClient:
                 )
 
         self._token = token
+        self._token_time = datetime.now(timezone.utc)  # Track token timestamp
         _LOGGER.info("Fresh-r authenticated (token=%.8s…)", token)
 
     async def _login_all(self, s: aiohttp.ClientSession) -> str | None:
@@ -413,8 +427,16 @@ class FreshRApiClient:
 
     async def async_get_current(self, serial: str) -> dict[str, Any]:
         """Fetch current sensor values for one device."""
+        # Check if token needs proactive refresh
+        if self._token and self._token_time:
+            token_age = (datetime.now(timezone.utc) - self._token_time).total_seconds()
+            if token_age > (TOKEN_EXPIRY_SECONDS - TOKEN_REFRESH_SECONDS):
+                _LOGGER.info("Token expires soon (%.0fs old) - proactive re-login", token_age)
+                await self._refresh_token()
+        
         if not self._token:
             await self.async_login()
+            
         try:
             raw = await self._call({
                 "current-data": {
@@ -425,8 +447,7 @@ class FreshRApiClient:
             })
         except FreshRConnectionError:
             _LOGGER.info("API error — re-authenticating")
-            self._token = None
-            await self.async_login()
+            await self._refresh_token()
             raw = await self._call({
                 "current-data": {
                     "request": "fresh-r-now",
@@ -502,3 +523,10 @@ class FreshRApiClient:
             result.update(derive(result))
 
         return result
+
+    async def _refresh_token(self) -> None:
+        """Refresh the authentication token."""
+        _LOGGER.debug("Refreshing authentication token")
+        self._token = None
+        self._token_time = None
+        await self.async_login()
