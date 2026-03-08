@@ -50,6 +50,9 @@ TOKEN_EXPIRY_SECONDS = 4500
 # Proactively refresh 5 minutes before expiry
 TOKEN_REFRESH_SECONDS = 300
 
+# Live monitoring configuration
+LIVE_MONITORING = True  # Set to False for production
+
 _LOGGER     = logging.getLogger(__name__)
 _TOKEN_RE   = re.compile(r'^[0-9a-f]{32,}$', re.I)
 _USER_AGENT = (
@@ -226,6 +229,48 @@ class FreshRApiClient:
         self._token_time: datetime | None = None  # Track when token was obtained
         # Persistent session — preserves cookies (PHPSESSID) across requests
         self._session: aiohttp.ClientSession | None = None
+        # Live monitoring
+        self._monitor_requests = []
+        self._monitor_responses = []
+
+    def _log_request(self, method: str, url: str, headers: dict, data: str = None):
+        """Log HTTP request for live monitoring"""
+        if not LIVE_MONITORING:
+            return
+            
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        _LOGGER.info(f"📤 REQUEST {timestamp}: {method} {url}")
+        _LOGGER.info(f"📤 Headers: {headers}")
+        if data:
+            _LOGGER.info(f"📤 Data: {data}")
+        
+        self._monitor_requests.append({
+            'timestamp': timestamp,
+            'method': method,
+            'url': url,
+            'headers': headers,
+            'data': data
+        })
+
+    def _log_response(self, status: int, url: str, headers: dict, body: str, cookies):
+        """Log HTTP response for live monitoring"""
+        if not LIVE_MONITORING:
+            return
+            
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        _LOGGER.info(f"📥 RESPONSE {timestamp}: {status} {url}")
+        _LOGGER.info(f"📥 Headers: {headers}")
+        _LOGGER.info(f"📥 Body: {body[:200]}...")
+        _LOGGER.info(f"📥 Cookies: {list(cookies)}")
+        
+        self._monitor_responses.append({
+            'timestamp': timestamp,
+            'status': status,
+            'url': url,
+            'headers': headers,
+            'body': body[:200],
+            'cookies': {c.key: c.value for c in cookies}
+        })
 
     def _get_session(self) -> aiohttp.ClientSession:
         """Return the persistent session, creating it if needed or if closed."""
@@ -300,40 +345,59 @@ class FreshRApiClient:
         
         # Step 1 — GET login page to establish PHPSESSID cookie
         try:
+            s = self._get_session()
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            }
+            self._log_request('GET', login_page_url, headers)
+            
             async with s.get(login_page_url, allow_redirects=True,
+                             headers=headers,
                              timeout=aiohttp.ClientTimeout(total=15)) as r:
-                await r.text()  # Consume response
+                body = await r.text()
+                self._log_response(r.status, str(r.url), dict(r.headers), body, s.cookie_jar)
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET %s failed: %s", login_page_url, e)
 
         # Step 2 — POST credentials to the API endpoint
         form = {"email": self._email, "password": self._password}
         
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "*/*",
+            "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Origin": "https://fresh-r.me",
+            "Referer": login_page_url,
+            "X-Requested-With": "XMLHttpRequest",
+            "DNT": "1",
+            "Priority": "u=1, i",
+            "Sec-Ch-Ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        }
+        
+        data_string = f"email={self._email}&password={self._password}"
+        self._log_request('POST', login_api_url, headers, data_string)
+        
         try:
             async with s.post(
                 login_api_url,
                 data=form,
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                    "Accept": "*/*",
-                    "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
-                    "Accept-Encoding": "gzip, deflate",
-                    "Origin": "https://fresh-r.me",
-                    "Referer": login_page_url,
-                    "X-Requested-With": "XMLHttpRequest",
-                    "DNT": "1",
-                    "Priority": "u=1, i",
-                    "Sec-Ch-Ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-                    "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"Windows"',
-                    "Sec-Fetch-Dest": "empty",
-                    "Sec-Fetch-Mode": "cors",
-                    "Sec-Fetch-Site": "same-origin",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                },
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as r:
                 body = await r.text()
+                self._log_response(r.status, str(r.url), dict(r.headers), body, s.cookie_jar)
                 _LOGGER.debug("Login API response: %s", body[:200])
                 
                 if r.status == 200:
@@ -408,10 +472,23 @@ class FreshRApiClient:
             URL("https://dashboard.bw-log.com")
         )
         
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Referer": "https://fresh-r.me/login/index.php?page=login",
+        }
+        
+        self._log_request('GET', devices_url, headers)
+        
         try:
             async with s.get(devices_url, allow_redirects=True,
+                             headers=headers,
                              timeout=aiohttp.ClientTimeout(total=15)) as r:
                 html = await r.text()
+                self._log_response(r.status, str(r.url), dict(r.headers), html, s.cookie_jar)
                 _LOGGER.debug(
                     "Devices page GET %s → %s (final: %s)",
                     devices_url, r.status, str(r.url),
