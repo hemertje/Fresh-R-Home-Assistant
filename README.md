@@ -34,6 +34,31 @@ A Home Assistant custom integration that **reads** data from the [Fresh-r.me](ht
 
 ---
 
+## 🌍 **Language Support**
+
+### **Automatic Language Detection**
+The Fresh-R integration automatically detects your Home Assistant language preference and displays the interface accordingly:
+
+| Language | Config Flow | Lovelace Card | Status |
+|----------|--------------|----------------|--------|
+| **🇬🇧 English** | ✅ Full English interface | ✅ English labels | Fully Supported |
+| **🇳🇱 Nederlands** | ✅ Volledig Nederlandse interface | ✅ English labels | Supported |
+| **🇩🇪 Deutsch** | ❌ Falls back to English | ✅ English labels | Partially Supported |
+| **🇫🇷 Français** | ❌ Falls back to English | ✅ English labels | Partially Supported |
+
+### **How Language Selection Works**
+1. **Home Assistant Profile:** Set your language in `Settings → Profile → Language`
+2. **Automatic Detection:** Fresh-R reads your HA language preference
+3. **Config Flow:** Uses appropriate translation file (`translations/en.json` or `translations/nl.json`)
+4. **Lovelace Card:** Always displays in English (hardcoded for consistency)
+
+### **Supported Languages**
+- **English:** Complete translation of all interface elements
+- **Nederlands:** Volledige vertaling van alle interface elementen
+- **Other languages:** Falls back to English automatically
+
+---
+
 ## Features
 
 | Feature | Details |
