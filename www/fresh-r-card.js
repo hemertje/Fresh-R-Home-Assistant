@@ -51,51 +51,46 @@ function co2Color(ppm) {
   return COLORS.co2_bad;
 }
 
-// ─── Radial clock chart (24h, 10-min intervals = 144 segments) ────────────────
+// ─── Radial 24h clock ─────────────────────────────────────────────────────────────
 class RadialChart {
   constructor(canvas, data) {
     this.canvas = canvas;
-    this.data   = data; // array of {time, co2, flow, t1, t2}
+    this.data   = data;
   }
 
   draw() {
-    const canvas = this.canvas;
-    const ctx    = canvas.getContext('2d');
-    const W      = canvas.width;
-    const H      = canvas.height;
-    const cx     = W / 2;
-    const cy     = H / 2;
-    const R      = Math.min(W, H) * 0.42;
+    const ctx  = this.canvas.getContext('2d');
+    const cx   = this.canvas.width / 2;
+    const cy   = this.canvas.height / 2;
+    const R    = Math.min(cx, cy) * 0.9;
+    const size = this.canvas.width;
 
-    ctx.clearRect(0, 0, W, H);
+    // Clear
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // Background
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, W, H);
-
-    // Clock ring background
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#1e3a5f';
-    ctx.lineWidth = R * 0.35;
-    ctx.stroke();
-
-    // Hour tick marks
-    for (let h = 0; h < 24; h++) {
-      const angle = (h / 24) * 2 * Math.PI - Math.PI / 2;
-      const r1    = R * 0.78;
-      const r2    = R * 0.85;
+    // Background rings
+    ctx.strokeStyle = COLORS.card;
+    ctx.lineWidth   = 1;
+    for (let i = 1; i <= 3; i++) {
       ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1);
-      ctx.lineTo(cx + Math.cos(angle) * r2, cy + Math.sin(angle) * r2);
-      ctx.strokeStyle = '#2a4a7f';
-      ctx.lineWidth   = 1;
+      ctx.arc(cx, cy, R * (i * 0.27), 0, 2 * Math.PI);
       ctx.stroke();
     }
 
-    if (!this.data || !this.data.length) {
-      this._drawCenter(ctx, cx, cy, null, null, null, null);
-      return;
+    // Hour markers
+    for (let h = 0; h < 24; h++) {
+      const a = (h / 24) * 2 * Math.PI - Math.PI / 2;
+      const x1 = cx + Math.cos(a) * (R * 0.95);
+      const y1 = cy + Math.sin(a) * (R * 0.95);
+      const x2 = cx + Math.cos(a) * (R * 0.92);
+      const y2 = cy + Math.sin(a) * (R * 0.92);
+      
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = COLORS.muted;
+      ctx.lineWidth   = h % 6 === 0 ? 2 : 1;
+      ctx.stroke();
     }
 
     // Normalise ranges
@@ -151,36 +146,6 @@ class RadialChart {
       ctx.fillStyle = COLORS.temp_outdoor + '88';
       ctx.fill();
     });
-
-    // Now indicator
-    const now   = new Date();
-    const nowH  = now.getHours() + now.getMinutes() / 60;
-    const nowA  = (nowH / 24) * 2 * Math.PI - Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(nowA) * (R * 0.30), cy + Math.sin(nowA) * (R * 0.30));
-    ctx.lineTo(cx + Math.cos(nowA) * (R * 1.00), cy + Math.sin(nowA) * (R * 1.00));
-    ctx.strokeStyle = '#ffffff66';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-
-    // Hour labels
-    ctx.fillStyle  = COLORS.muted;
-    ctx.font       = `${Math.max(9, W * 0.028)}px sans-serif`;
-    ctx.textAlign  = 'center';
-    ctx.textBaseline = 'middle';
-    for (let h = 0; h < 24; h += 3) {
-      const angle = (h / 24) * 2 * Math.PI - Math.PI / 2;
-      const lr    = R * 1.08;
-      ctx.fillText(String(h).padStart(2,'0'), cx + Math.cos(angle) * lr, cy + Math.sin(angle) * lr);
-    }
-
-    // Center values (from latest data point)
-    const latest = this.data[this.data.length - 1];
-    this._drawCenter(ctx, cx, cy, latest.t1, latest.flow, latest.co2, latest.t2);
-  }
-
-  _drawCenter(ctx, cx, cy, t1, flow, co2, t2) {
-    const R = Math.min(this.canvas.width, this.canvas.height) * 0.42;
 
     // Center bg
     ctx.beginPath();
@@ -366,9 +331,9 @@ class FreshRCard extends HTMLElement {
       </style>
       <div class="card">
         <div class="tabs">
-          <div class="tab active" data-tab="oxygen">Zuurstof</div>
-          <div class="tab"        data-tab="humidity">Vochtigheid</div>
-          <div class="tab"        data-tab="dust">Fijnstof</div>
+          <div class="tab active" data-tab="oxygen">Oxygen</div>
+          <div class="tab"        data-tab="humidity">Humidity</div>
+          <div class="tab"        data-tab="dust">Dust</div>
         </div>
         <div class="body">
           <div class="polar-wrap">
@@ -376,27 +341,32 @@ class FreshRCard extends HTMLElement {
           </div>
           <div class="charts">
             <div class="chart-wrap">
-              <div class="chart-label" id="c1-label">Temperatuur</div>
+              <div class="chart-label" id="c1-label">Temperature</div>
               <canvas id="c1" width="500" height="120"></canvas>
             </div>
             <div class="chart-wrap">
-              <div class="chart-label">Luchtdebiet (m³/h)</div>
+              <div class="chart-label">Flow (m³/h)</div>
               <canvas id="c2" width="500" height="100"></canvas>
             </div>
             <div class="chart-wrap">
-              <div class="chart-label">Warmte (W)</div>
+              <div class="chart-label">Heat (W)</div>
               <canvas id="c3" width="500" height="100"></canvas>
             </div>
           </div>
         </div>
         <div class="stats" id="stats"></div>
         <div class="legend">
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_good}"></div>CO2 goed (&lt;1000)</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_moderate}"></div>CO2 matig</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_bad}"></div>CO2 slecht (&gt;1200)</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.flow}"></div>Debiet</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_indoor}"></div>Binnenlucht</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_outdoor}"></div>Buitenlucht</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_good}"></div>CO2 good (&lt;1000)</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_moderate}"></div>CO2 moderate</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_bad}"></div>CO2 bad (&gt;1200)</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.flow}"></div>Flow</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_indoor}"></div>Indoor Air</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_outdoor}"></div>Outdoor Air</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_supply}"></div>Supply Air</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_exhaust}"></div>Exhaust Air</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.heat}"></div>Heat Recovery</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.energy}"></div>Energy Loss</div>
+          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.pm25}"></div>PM2.5</div>
         </div>
       </div>
     `;
@@ -442,7 +412,7 @@ class FreshRCard extends HTMLElement {
     if (!eids.length) return;
 
     try {
-      const url = `/api/history/period/${start.toISOString()}?filter_entity_id=${eids.join(',')}&minimal_response=true`;
+      const url = '/api/history/period/' + start.toISOString() + '?filter_entity_id=' + eids.join(',') + '&minimal_response=true';
       const r   = await this._hass.callApi('GET', url.slice(5));
       if (!Array.isArray(r)) return;
       r.forEach((series, i) => {
@@ -578,12 +548,12 @@ class FreshRCard extends HTMLElement {
     ];
 
     const container = this._shadow.getElementById('stats');
-    container.innerHTML = stats.map(s => `
-      <div class="stat">
-        <div class="stat-value" style="color:${s.color}">${s.value}</div>
-        <div class="stat-label">${s.label}</div>
-      </div>
-    `).join('');
+    container.innerHTML = stats.map(s => 
+      '<div class="stat">' +
+        '<div class="stat-value" style="color:' + s.color + '">' + s.value + '</div>' +
+        '<div class="stat-label">' + s.label + '</div>' +
+      '</div>'
+    ).join('');
   }
 
   static getStubConfig() {
