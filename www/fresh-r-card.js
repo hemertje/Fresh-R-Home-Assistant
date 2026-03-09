@@ -1,26 +1,171 @@
 /**
- * Fresh-r Dashboard Card
+ * Fresh-r Dashboard Card with Multi-language Support
  * Replicates the fresh-r.me dashboard in Home Assistant Lovelace.
- *
- * Config example:
- *   type: custom:fresh-r-card
- *   entities:
- *     t1: sensor.fresh_r_indoor_temperature
- *     t2: sensor.fresh_r_outdoor_temperature
- *     t3: sensor.fresh_r_supply_temperature
- *     t4: sensor.fresh_r_exhaust_temperature
- *     flow: sensor.fresh_r_flow_rate
- *     co2: sensor.fresh_r_co2
- *     hum: sensor.fresh_r_humidity
- *     dp: sensor.fresh_r_dew_point
- *     d5_25: sensor.fresh_r_supply_pm2_5
- *     d4_25: sensor.fresh_r_outdoor_pm2_5
- *     d1_25: sensor.fresh_r_indoor_pm2_5
- *     heat_recovered: sensor.fresh_r_heat_recovered
- *     vent_loss: sensor.fresh_r_ventilation_loss
- *     energy_loss: sensor.fresh_r_energy_loss
+ * 
+ * Language support: English, Dutch, German, French (auto-detected from Home Assistant)
  */
 
+// Language translations
+const TRANSLATIONS = {
+  en: {
+    tabs: {
+      oxygen: 'Oxygen',
+      humidity: 'Humidity',
+      dust: 'Dust'
+    },
+    chartLabels: {
+      temperature: 'Temperature',
+      flow: 'Flow',
+      heat: 'Heat',
+      humidity: 'Humidity',
+      pm25: 'PM2.5'
+    },
+    legend: {
+      co2_good: 'CO2 good',
+      co2_moderate: 'CO2 moderate',
+      co2_bad: 'CO2 bad',
+      flow: 'Flow',
+      indoor_air: 'Indoor Air',
+      outdoor_air: 'Outdoor Air',
+      supply_air: 'Supply Air',
+      exhaust_air: 'Exhaust Air',
+      heat_recovery: 'Heat Recovery',
+      energy_loss: 'Energy Loss',
+      pm25: 'PM2.5'
+    },
+    stats: {
+      indoor_temp: 'Indoor Temp',
+      outdoor_temp: 'Outdoor Temp',
+      flow: 'Flow',
+      co2: 'CO2',
+      humidity: 'Humidity',
+      dew_point: 'Dew Point',
+      heat_recovery: 'Heat Recovery',
+      energy_loss: 'Energy Loss'
+    },
+    no_data: 'No data',
+    outside: 'outside'
+  },
+  nl: {
+    tabs: {
+      oxygen: 'Zuurstof',
+      humidity: 'Vochtigheid',
+      dust: 'Fijnstof'
+    },
+    chartLabels: {
+      temperature: 'Temperatuur',
+      flow: 'Debiet',
+      heat: 'Warmte',
+      humidity: 'Vochtigheid',
+      pm25: 'PM2.5'
+    },
+    legend: {
+      co2_good: 'CO2 goed',
+      co2_moderate: 'CO2 matig',
+      co2_bad: 'CO2 slecht',
+      flow: 'Debiet',
+      indoor_air: 'Binnenlucht',
+      outdoor_air: 'Buitenlucht',
+      supply_air: 'Aanvoer',
+      exhaust_air: 'Afvoer',
+      heat_recovery: 'Warmteterugwinning',
+      energy_loss: 'Energieverlies',
+      pm25: 'Fijnstof'
+    },
+    stats: {
+      indoor_temp: 'Binnentemp',
+      outdoor_temp: 'Buitentemp',
+      flow: 'Debiet',
+      co2: 'CO2',
+      humidity: 'Vochtigheid',
+      dew_point: 'Dauwpunt',
+      heat_recovery: 'Warmteterugwinning',
+      energy_loss: 'Energieverlies'
+    },
+    no_data: 'Geen data',
+    outside: 'buiten'
+  },
+  de: {
+    tabs: {
+      oxygen: 'Sauerstoff',
+      humidity: 'Feuchtigkeit',
+      dust: 'Feinstaub'
+    },
+    chartLabels: {
+      temperature: 'Temperatur',
+      flow: 'Volumenstrom',
+      heat: 'Wärme',
+      humidity: 'Feuchtigkeit',
+      pm25: 'PM2.5'
+    },
+    legend: {
+      co2_good: 'CO2 gut',
+      co2_moderate: 'CO2 moderat',
+      co2_bad: 'CO2 schlecht',
+      flow: 'Volumenstrom',
+      indoor_air: 'Innenluft',
+      outdoor_air: 'Außenluft',
+      supply_air: 'Zuluft',
+      exhaust_air: 'Abluft',
+      heat_recovery: 'Wärmerückgewinnung',
+      energy_loss: 'Energieverlust',
+      pm25: 'Feinstaub'
+    },
+    stats: {
+      indoor_temp: 'Innentemperatur',
+      outdoor_temp: 'Außentemperatur',
+      flow: 'Volumenstrom',
+      co2: 'CO2',
+      humidity: 'Feuchtigkeit',
+      dew_point: 'Taupunkt',
+      heat_recovery: 'Wärmerückgewinnung',
+      energy_loss: 'Energieverlust'
+    },
+    no_data: 'Keine Daten',
+    outside: 'außen'
+  },
+  fr: {
+    tabs: {
+      oxygen: 'Oxygène',
+      humidity: 'Humidité',
+      dust: 'Particules fines'
+    },
+    chartLabels: {
+      temperature: 'Température',
+      flow: 'Débit',
+      heat: 'Chaleur',
+      humidity: 'Humidité',
+      pm25: 'PM2.5'
+    },
+    legend: {
+      co2_good: 'CO2 bon',
+      co2_moderate: 'CO2 modéré',
+      co2_bad: 'CO2 mauvais',
+      flow: 'Débit',
+      indoor_air: 'Air intérieur',
+      outdoor_air: 'Air extérieur',
+      supply_air: 'Air soufflé',
+      exhaust_air: 'Air évacué',
+      heat_recovery: 'Récupération de chaleur',
+      energy_loss: 'Perte d\'énergie',
+      pm25: 'PM2.5'
+    },
+    stats: {
+      indoor_temp: 'Température intérieure',
+      outdoor_temp: 'Température extérieure',
+      flow: 'Débit',
+      co2: 'CO2',
+      humidity: 'Humidité',
+      dew_point: 'Point de rosée',
+      heat_recovery: 'Récupération de chaleur',
+      energy_loss: 'Perte d\'énergie'
+    },
+    no_data: 'Aucune donnée',
+    outside: 'extérieur'
+  }
+};
+
+// Color scheme (unchanged)
 const COLORS = {
   co2_good:     '#4caf50',
   co2_moderate: '#ff9800',
@@ -49,6 +194,30 @@ function co2Color(ppm) {
   if (ppm <= CO2_GOOD)     return COLORS.co2_good;
   if (ppm <= CO2_MODERATE) return COLORS.co2_moderate;
   return COLORS.co2_bad;
+}
+
+// Language detection from Home Assistant
+function getLanguage() {
+  // Try to get language from Home Assistant
+  if (window.hass && window.hass.language) {
+    const lang = window.hass.language.split('-')[0];
+    if (TRANSLATIONS[lang]) return lang;
+  }
+  
+  // Fallback to browser language
+  const browserLang = navigator.language.split('-')[0];
+  return TRANSLATIONS[browserLang] ? browserLang : 'en';
+}
+
+// Get translation for current language
+function t(key, subkey = null) {
+  const lang = getLanguage();
+  const translations = TRANSLATIONS[lang];
+  
+  if (subkey) {
+    return translations[key]?.[subkey] || TRANSLATIONS.en[key]?.[subkey] || key;
+  }
+  return translations[key] || TRANSLATIONS.en[key] || key;
 }
 
 // ─── Radial 24h clock ─────────────────────────────────────────────────────────────
@@ -177,11 +346,11 @@ class RadialChart {
       // Outdoor temp
       ctx.fillStyle = COLORS.temp_outdoor;
       ctx.font      = `${size * 0.035}px sans-serif`;
-      ctx.fillText('outside ' + (+t2).toFixed(1) + '°C', cx, cy + size * 0.095);
+      ctx.fillText(t('outside') + ' ' + (+t2).toFixed(1) + '°C', cx, cy + size * 0.095);
     } else {
       ctx.fillStyle = COLORS.muted;
       ctx.font      = `${size * 0.04}px sans-serif`;
-      ctx.fillText('No data', cx, cy);
+      ctx.fillText(t('no_data'), cx, cy);
     }
   }
 }
@@ -203,7 +372,7 @@ function drawLineChart(canvas, datasets, ylabel) {
     ctx.fillStyle = COLORS.muted;
     ctx.font      = '12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('No data', W / 2, H / 2);
+    ctx.fillText(t('no_data'), W / 2, H / 2);
     return;
   }
 
@@ -331,9 +500,9 @@ class FreshRCard extends HTMLElement {
       </style>
       <div class="card">
         <div class="tabs">
-          <div class="tab active" data-tab="oxygen">Oxygen</div>
-          <div class="tab"        data-tab="humidity">Humidity</div>
-          <div class="tab"        data-tab="dust">Dust</div>
+          <div class="tab active" data-tab="oxygen">${t('tabs', 'oxygen')}</div>
+          <div class="tab"        data-tab="humidity">${t('tabs', 'humidity')}</div>
+          <div class="tab"        data-tab="dust">${t('tabs', 'dust')}</div>
         </div>
         <div class="body">
           <div class="polar-wrap">
@@ -341,33 +510,21 @@ class FreshRCard extends HTMLElement {
           </div>
           <div class="charts">
             <div class="chart-wrap">
-              <div class="chart-label" id="c1-label">Temperature</div>
+              <div class="chart-label" id="c1-label">${t('chartLabels', 'temperature')}</div>
               <canvas id="c1" width="500" height="120"></canvas>
             </div>
             <div class="chart-wrap">
-              <div class="chart-label">Flow (m³/h)</div>
+              <div class="chart-label">${t('chartLabels', 'flow')} (m³/h)</div>
               <canvas id="c2" width="500" height="100"></canvas>
             </div>
             <div class="chart-wrap">
-              <div class="chart-label">Heat (W)</div>
+              <div class="chart-label">${t('chartLabels', 'heat')} (W)</div>
               <canvas id="c3" width="500" height="100"></canvas>
             </div>
           </div>
         </div>
         <div class="stats" id="stats"></div>
-        <div class="legend">
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_good}"></div>CO2 good (&lt;1000)</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_moderate}"></div>CO2 moderate</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.co2_bad}"></div>CO2 bad (&gt;1200)</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.flow}"></div>Flow</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_indoor}"></div>Indoor Air</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_outdoor}"></div>Outdoor Air</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_supply}"></div>Supply Air</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.temp_exhaust}"></div>Exhaust Air</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.heat}"></div>Heat Recovery</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.energy}"></div>Energy Loss</div>
-          <div class="leg-item"><div class="leg-dot" style="background:${COLORS.pm25}"></div>PM2.5</div>
-        </div>
+        <div class="legend" id="legend"></div>
       </div>
     `;
 
@@ -439,6 +596,7 @@ class FreshRCard extends HTMLElement {
     this._drawPolar();
     this._drawLineCharts();
     this._drawStats();
+    this._drawLegend();
   }
 
   _drawPolar() {
@@ -479,46 +637,46 @@ class FreshRCard extends HTMLElement {
 
     if (tab === 'oxygen') {
       // Chart 1: Indoor vs Outdoor temperature
-      this._shadow.getElementById('c1-label').textContent = 'Temperature (°C)';
+      this._shadow.getElementById('c1-label').textContent = t('chartLabels', 'temperature') + ' (°C)';
       drawLineChart(this._c1, [
-        { label: 'Indoor Air (t1)',  color: COLORS.temp_indoor,  data: this._histSeries('t1') },
-        { label: 'Outdoor Air (t2)', color: COLORS.temp_outdoor, data: this._histSeries('t2') },
-        { label: 'Supply Air (t3)',      color: COLORS.temp_supply,  data: this._histSeries('t3') },
-        { label: 'Exhaust Air (t4)',       color: COLORS.temp_exhaust, data: this._histSeries('t4') },
+        { label: t('legend', 'indoor_air') + ' (t1)',  color: COLORS.temp_indoor,  data: this._histSeries('t1') },
+        { label: t('legend', 'outdoor_air') + ' (t2)', color: COLORS.temp_outdoor, data: this._histSeries('t2') },
+        { label: t('legend', 'supply_air') + ' (t3)',      color: COLORS.temp_supply,  data: this._histSeries('t3') },
+        { label: t('legend', 'exhaust_air') + ' (t4)',       color: COLORS.temp_exhaust, data: this._histSeries('t4') },
       ]);
       // Chart 2: Flow
       drawLineChart(this._c2, [
-        { label: 'Flow (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
+        { label: t('legend', 'flow') + ' (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
       ]);
       // Chart 3: Heat
       drawLineChart(this._c3, [
-        { label: 'Heat Recovery', color: COLORS.heat,   data: this._histSeries('heat_recovered') },
+        { label: t('legend', 'heat_recovery'), color: COLORS.heat,   data: this._histSeries('heat_recovered') },
         { label: 'Reference Ventilation Loss', color: COLORS.loss,   data: this._histSeries('vent_loss') },
-        { label: 'Energy Loss',     color: COLORS.energy, data: this._histSeries('energy_loss') },
+        { label: t('legend', 'energy_loss'),     color: COLORS.energy, data: this._histSeries('energy_loss') },
       ]);
 
     } else if (tab === 'humidity') {
-      this._shadow.getElementById('c1-label').textContent = 'Humidity (%)';
+      this._shadow.getElementById('c1-label').textContent = t('chartLabels', 'humidity') + ' (%)';
       drawLineChart(this._c1, [
-        { label: 'Relative Humidity', color: COLORS.flow, data: this._histSeries('hum') },
-        { label: 'Dew Point (°C)',          color: COLORS.temp_outdoor, data: this._histSeries('dp') },
+        { label: t('stats', 'humidity'), color: COLORS.flow, data: this._histSeries('hum') },
+        { label: t('stats', 'dew_point') + ' (°C)',          color: COLORS.temp_outdoor, data: this._histSeries('dp') },
       ]);
       drawLineChart(this._c2, [
-        { label: 'Flow (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
+        { label: t('legend', 'flow') + ' (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
       ]);
       drawLineChart(this._c3, [
         { label: 'CO2 (ppm)', color: COLORS.co2_good, data: this._histSeries('co2') },
       ]);
 
     } else if (tab === 'dust') {
-      this._shadow.getElementById('c1-label').textContent = 'PM2.5 (µg/m³)';
+      this._shadow.getElementById('c1-label').textContent = t('chartLabels', 'pm25') + ' (µg/m³)';
       drawLineChart(this._c1, [
-        { label: 'Supply PM2.5',   color: COLORS.temp_supply,  data: this._histSeries('d5_25') },
-        { label: 'Outdoor PM2.5',    color: COLORS.temp_outdoor, data: this._histSeries('d4_25') },
-        { label: 'Indoor PM2.5',    color: COLORS.temp_indoor,  data: this._histSeries('d1_25') },
+        { label: t('legend', 'supply_air') + ' PM2.5',   color: COLORS.temp_supply,  data: this._histSeries('d5_25') },
+        { label: t('legend', 'outdoor_air') + ' PM2.5',    color: COLORS.temp_outdoor, data: this._histSeries('d4_25') },
+        { label: t('legend', 'indoor_air') + ' PM2.5',    color: COLORS.temp_indoor,  data: this._histSeries('d1_25') },
       ]);
       drawLineChart(this._c2, [
-        { label: 'Flow (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
+        { label: t('legend', 'flow') + ' (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
       ]);
       drawLineChart(this._c3, [
         { label: 'CO2 (ppm)', color: COLORS.co2_good, data: this._histSeries('co2') },
@@ -537,14 +695,14 @@ class FreshRCard extends HTMLElement {
     const el   = this._val('energy_loss');
 
     const stats = [
-      { label: 'Indoor Temp',        value: t1   !== null ? t1.toFixed(1)   + ' °C' : '–', color: COLORS.temp_indoor },
-      { label: 'Outdoor Temp',        value: t2   !== null ? t2.toFixed(1)   + ' °C' : '–', color: COLORS.temp_outdoor },
-      { label: 'Flow',            value: flow !== null ? flow.toFixed(0) + ' m³/h' : '–', color: COLORS.flow },
-      { label: 'CO2',               value: co2  !== null ? co2.toFixed(0)  + ' ppm' : '–', color: co2 !== null ? co2Color(co2) : COLORS.muted },
-      { label: 'Humidity',       value: hum  !== null ? hum.toFixed(0)  + ' %'   : '–', color: COLORS.accent },
-      { label: 'Dew Point',          value: dp   !== null ? dp.toFixed(1)   + ' °C'  : '–', color: COLORS.muted },
-      { label: 'Heat Recovery',value: hr   !== null ? hr.toFixed(0)   + ' W'   : '–', color: COLORS.heat },
-      { label: 'Energy Loss',    value: el   !== null ? el.toFixed(0)   + ' W'   : '–', color: COLORS.energy },
+      { label: t('stats', 'indoor_temp'),        value: t1   !== null ? t1.toFixed(1)   + ' °C' : '–', color: COLORS.temp_indoor },
+      { label: t('stats', 'outdoor_temp'),        value: t2   !== null ? t2.toFixed(1)   + ' °C' : '–', color: COLORS.temp_outdoor },
+      { label: t('stats', 'flow'),            value: flow !== null ? flow.toFixed(0) + ' m³/h' : '–', color: COLORS.flow },
+      { label: t('stats', 'co2'),               value: co2  !== null ? co2.toFixed(0)  + ' ppm' : '–', color: co2 !== null ? co2Color(co2) : COLORS.muted },
+      { label: t('stats', 'humidity'),       value: hum  !== null ? hum.toFixed(0)  + ' %'   : '–', color: COLORS.accent },
+      { label: t('stats', 'dew_point'),          value: dp   !== null ? dp.toFixed(1)   + ' °C'  : '–', color: COLORS.muted },
+      { label: t('stats', 'heat_recovery'),value: hr   !== null ? hr.toFixed(0)   + ' W'   : '–', color: COLORS.heat },
+      { label: t('stats', 'energy_loss'),    value: el   !== null ? el.toFixed(0)   + ' W'   : '–', color: COLORS.energy },
     ];
 
     const container = this._shadow.getElementById('stats');
@@ -552,6 +710,30 @@ class FreshRCard extends HTMLElement {
       '<div class="stat">' +
         '<div class="stat-value" style="color:' + s.color + '">' + s.value + '</div>' +
         '<div class="stat-label">' + s.label + '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  _drawLegend() {
+    const legendContainer = this._shadow.getElementById('legend');
+    const legendItems = [
+      { color: COLORS.co2_good, text: t('legend', 'co2_good') + ' (<1000)' },
+      { color: COLORS.co2_moderate, text: t('legend', 'co2_moderate') },
+      { color: COLORS.co2_bad, text: t('legend', 'co2_bad') + ' (>1200)' },
+      { color: COLORS.flow, text: t('legend', 'flow') },
+      { color: COLORS.temp_indoor, text: t('legend', 'indoor_air') },
+      { color: COLORS.temp_outdoor, text: t('legend', 'outdoor_air') },
+      { color: COLORS.temp_supply, text: t('legend', 'supply_air') },
+      { color: COLORS.temp_exhaust, text: t('legend', 'exhaust_air') },
+      { color: COLORS.heat, text: t('legend', 'heat_recovery') },
+      { color: COLORS.energy, text: t('legend', 'energy_loss') },
+      { color: COLORS.pm25, text: t('legend', 'pm25') }
+    ];
+
+    legendContainer.innerHTML = legendItems.map(item => 
+      '<div class="leg-item">' +
+        '<div class="leg-dot" style="background:' + item.color + '"></div>' +
+        item.text +
       '</div>'
     ).join('');
   }
@@ -567,6 +749,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type:        'fresh-r-card',
   name:        'Fresh-r Dashboard',
-  description: 'Replicates the fresh-r.me dashboard with radial clock, line charts and stats',
+  description: 'Replicates the fresh-r.me dashboard with radial clock, line charts and stats (multi-language)',
   preview:     true,
 });
