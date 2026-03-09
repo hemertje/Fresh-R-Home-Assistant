@@ -1,14 +1,16 @@
 """Fresh-r API client — read-only, current data only.
 
-Authentication flow (reverse-engineered from HAR + JS source):
-  - All data lives on dashboard.bw-log.com
-  - Login: POST to login page with email/password → Set-Cookie: sess_token
-  - API: POST /api.php?q=<JSON> with token in JSON body
-  - Serial is auto-discovered from the account; user never enters it
+Authentication flow (observed via browser):
+  - Login: POST credentials to fresh-r.me → HTTP 302 → dashboard.bw-log.com/?page=devices
+    PHPSESSID cookie is set on dashboard.bw-log.com during this redirect chain.
+  - There is NO separate hex token — auth is purely cookie-based (PHPSESSID).
+  - The persistent session (cookie jar) MUST be reused for all subsequent API calls
+    so the PHPSESSID is sent automatically on the same domain.
+  - Serial: extracted from the devices page href (e.g. ?serial=e:XXXXXX/XXXXXX)
 
-NOTE: Historical data is NOT available via the Fresh-R.me API.
-      Home Assistant's own recorder stores history from the moment
-      the integration is active.
+API (dashboard_data.js):
+  POST https://dashboard.bw-log.com/api.php?q=<JSON>
+  JSON body includes token (PHPSESSID value or empty), tzoffset, requests dict.
 
 Flow calibration (dashboard.js):
   raw > 300 → calibrated = (raw - 700) / 30 + 20  (ESP boost mode correction)
@@ -20,21 +22,44 @@ Derived sensors (dashboard_data.js physics):
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any
-from urllib.parse import urljoin, parse_qs, urlparse
+from datetime import datetime, timezone, timedelta
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import aiohttp
+from yarl import URL
 
 from .const import (
-    API_URL, LOGIN_URLS,
+    API_BASE,
+    API_URL,
     FIELDS_NOW,
-    FLOW_THRESHOLD, FLOW_OFFSET, FLOW_DIVISOR, FLOW_BASE,
-    AIR_HEAT_CAP, REF_FLOW,
+    FLOW_BASE,
+    FLOW_DIVISOR,
+    FLOW_OFFSET,
+    FLOW_THRESHOLD,
+    LOGIN_URLS,
+    REF_FLOW,
+    AIR_HEAT_CAP,
 )
+
+# Token expires after 75 minutes (4500 seconds)
+TOKEN_EXPIRY_SECONDS = 4500
+# Proactively refresh 5 minutes before expiry
+TOKEN_REFRESH_SECONDS = 300
+
+# Safe testing intervals (realistisch)
+SAFE_LOGIN_INTERVAL = 300      # 5 minuten tussen login attempts
+SAFE_DATA_INTERVAL = 900       # 15 minuten tussen data polls
+SAFE_MONITORING_INTERVAL = 3600 # 1 uur tussen monitoring checks
+
+# Rate limit protection
+MAX_REQUESTS_PER_HOUR = 12  # 1 per 5 minuten
+
+# Live monitoring configuration
+LIVE_MONITORING = True  # Set to False for production
 
 _LOGGER     = logging.getLogger(__name__)
 _TOKEN_RE   = re.compile(r'^[0-9a-f]{32,}$', re.I)
@@ -43,6 +68,9 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
+
+# Serial pattern: e.g. "e:XXXXXX/XXXXXX" or just digits
+_SERIAL_RE = re.compile(r'serial=([^&"\'>\s]+)', re.I)
 
 
 class FreshRAuthError(Exception):
@@ -76,15 +104,24 @@ def derive(data: dict[str, float]) -> dict[str, float]:
 
 
 def _token_in_jar(jar: aiohttp.CookieJar) -> str | None:
+    """Return the first cookie value that looks like a hex session token."""
     # First: check well-known names
     for c in jar:
         if c.key.lower().replace("-", "_") in ("sess_token", "token", "session_token", "l", "sid"):
             if _TOKEN_RE.match(c.value):
                 return c.value
-    # Fallback: any cookie whose value looks like a hex session token
+    # Fallback: any cookie whose value is pure lowercase hex 32+ chars
     for c in jar:
         if _TOKEN_RE.match(c.value):
             _LOGGER.debug("Using token from cookie '%s'", c.key)
+            return c.value
+    return None
+
+
+def _phpsessid_from_jar(jar: aiohttp.CookieJar) -> str | None:
+    """Return the PHPSESSID value from the cookie jar."""
+    for c in jar:
+        if c.key.upper() == "PHPSESSID":
             return c.value
     return None
 
@@ -127,7 +164,7 @@ def _token_in_headers(headers: Any) -> str | None:
 def _token_in_url(url: str) -> str | None:
     try:
         for k, vals in parse_qs(urlparse(url).query).items():
-            if k.lower() in ("l", "sess_token", "token"):
+            if k.lower() in ("l", "t", "sess_token", "token"):
                 for v in vals:
                     if _TOKEN_RE.match(v):
                         return v
@@ -136,21 +173,30 @@ def _token_in_url(url: str) -> str | None:
     return None
 
 
+def _all_inputs(html: str) -> list[tuple[str, str, str]]:
+    """Return all <input> fields as (type, name, value) tuples — for diagnosis."""
+    out = []
+    for tag in re.finditer(r"<input[^>]+>", html, re.I | re.S):
+        t   = tag.group(0)
+        typ = (re.search(r'type=["\']?([^"\'>\s]+)["\']?', t, re.I) or type("", (), {"group": lambda s, n: "text"})).group(1)
+        nm  = re.search(r'name=["\']([^"\']+)["\']', t, re.I)
+        vl  = re.search(r'value=["\']([^"\']*)["\']', t, re.I)
+        if nm:
+            out.append((typ, nm.group(1), (vl.group(1) if vl else "")))
+    return out
+
+
 def _hidden_inputs(html: str) -> dict[str, str]:
     out: dict[str, str] = {}
-    for tag in re.finditer(r"<input[^>]+>", html, re.I | re.S):
-        t = tag.group(0)
-        if not re.search(r'type=["\']hidden["\']', t, re.I):
-            continue
-        nm = re.search(r'name=["\']([^"\']+)["\']', t, re.I)
-        vl = re.search(r'value=["\']([^"\']*)["\']', t, re.I)
-        if nm:
-            out[nm.group(1)] = vl.group(1) if vl else ""
+    for typ, name, value in _all_inputs(html):
+        if typ.lower() == "hidden":
+            out[name] = value
     return out
 
 
 def _form_action(html: str, base: str) -> str:
-    m = re.search(r'<form[^>]+action=["\']([^"\']*)["\']', html, re.I)
+    # Match both quoted and unquoted action attributes
+    m = re.search(r'<form[^>]+action=["\']?([^"\'>\s]*)["\']?', html, re.I)
     if not m:
         return base
     action = m.group(1)
@@ -164,34 +210,118 @@ def _origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}"
 
 
+def _serials_in_html(html: str) -> list[str]:
+    """Extract device serial numbers from dashboard.bw-log.com devices page."""
+    # Pattern confirmed from HTML analysis: serial="e:XXXXXX/XXXXXX" (PRIVACY PROTECTED)
+    return list(dict.fromkeys(
+        m.group(1) for m in _SERIAL_RE.finditer(html)
+    ))
+
+
 # ── Client ─────────────────────────────────────────────────────────────────────
 
 class FreshRApiClient:
-    """Async HTTP client for the Fresh-r bw-log API (read-only, current data)."""
+    """Async HTTP client for the Fresh-r bw-log API (read-only, current data).
+
+    IMPORTANT: A single persistent aiohttp.ClientSession is created on first
+    login and reused for all API calls.  This is necessary because auth is
+    cookie-based (PHPSESSID on dashboard.bw-log.com) — the cookie jar must
+    survive between the login redirect and subsequent API POSTs.
+    """
 
     def __init__(self, email: str, password: str, ha_session: aiohttp.ClientSession) -> None:
         self._email      = email
         self._password   = password
+        # ha_session kept only for backward-compatibility; not used for API calls
         self._ha_session = ha_session
         self._token: str | None = None
+        self._token_time: datetime | None = None  # Track when token was obtained
+        # Persistent session — preserves cookies (PHPSESSID) across requests
+        self._session: aiohttp.ClientSession | None = None
+        # Live monitoring
+        self._monitor_requests = []
+        self._monitor_responses = []
+
+    def _log_request(self, method: str, url: str, headers: dict, data: str = None):
+        """Log HTTP request for live monitoring"""
+        if not LIVE_MONITORING:
+            return
+            
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        _LOGGER.info(f"📤 REQUEST {timestamp}: {method} {url}")
+        _LOGGER.info(f"📤 Headers: {headers}")
+        if data:
+            _LOGGER.info(f"📤 Data: {data}")
+        
+        self._monitor_requests.append({
+            'timestamp': timestamp,
+            'method': method,
+            'url': url,
+            'headers': headers,
+            'data': data
+        })
+
+    def _log_response(self, status: int, url: str, headers: dict, body: str, cookies):
+        """Log HTTP response for live monitoring"""
+        if not LIVE_MONITORING:
+            return
+            
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        _LOGGER.info(f"📥 RESPONSE {timestamp}: {status} {url}")
+        _LOGGER.info(f"📥 Headers: {headers}")
+        _LOGGER.info(f"📥 Body: {body[:200]}...")
+        _LOGGER.info(f"📥 Cookies: {list(cookies)}")
+        
+        self._monitor_responses.append({
+            'timestamp': timestamp,
+            'status': status,
+            'url': url,
+            'headers': headers,
+            'body': body[:200],
+            'cookies': {c.key: c.value for c in cookies}
+        })
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        """Return the persistent session, creating it if needed or if closed."""
+        if self._session is None or self._session.closed:
+            jar = aiohttp.CookieJar(unsafe=True)
+            self._session = aiohttp.ClientSession(
+                cookie_jar=jar,
+                headers={"User-Agent": _USER_AGENT, "Accept-Language": "nl,en;q=0.9"},
+            )
+        return self._session
+
+    async def async_close(self) -> None:
+        """Close the persistent HTTP session (call on integration unload)."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+        self._session = None
 
     # ── Login ──────────────────────────────────────────────────────────────────
 
     async def async_login(self) -> None:
-        """Authenticate and store sess_token. Raises FreshRAuthError on failure."""
-        jar = aiohttp.CookieJar(unsafe=True)
-        async with aiohttp.ClientSession(
-            cookie_jar=jar,
-            headers={"User-Agent": _USER_AGENT, "Accept-Language": "nl,en;q=0.9"},
-        ) as s:
-            token = await self._login_all(s)
+        """Authenticate and store session. Raises FreshRAuthError on failure."""
+        s = self._get_session()
+        token = await self._login_all(s)
 
         if not token:
-            raise FreshRAuthError(
-                "Login failed — no session token received. "
-                "Verify your credentials at fresh-r.me"
-            )
+            # No hex token found — use PHPSESSID as the API token value.
+            # dashboard.bw-log.com authenticates via cookie; the JSON "token"
+            # field may be optional or accept the session ID.
+            phpsessid = _phpsessid_from_jar(s.cookie_jar)
+            if phpsessid:
+                _LOGGER.info(
+                    "No hex token found — using PHPSESSID as session token (%.8s…)", phpsessid
+                )
+                token = phpsessid
+            else:
+                raise FreshRAuthError(
+                    "Login failed — no session token or PHPSESSID received. "
+                    "Verify your credentials at fresh-r.me"
+                )
+
         self._token = token
+        self._token_time = datetime.now(timezone.utc)  # Track token timestamp
         _LOGGER.info("Fresh-r authenticated (token=%.8s…)", token)
 
     async def _login_all(self, s: aiohttp.ClientSession) -> str | None:
@@ -203,7 +333,7 @@ class FreshRApiClient:
                 if tok:
                     _LOGGER.debug("Login succeeded via %s", url)
                     return tok
-                _LOGGER.debug("No token via %s — trying next", url)
+                _LOGGER.debug("No hex token via %s — trying next", url)
             except FreshRAuthError:
                 raise      # Wrong credentials — no point trying others
             except aiohttp.ClientError as e:
@@ -212,144 +342,197 @@ class FreshRApiClient:
         _LOGGER.warning("All login URLs exhausted. Last error: %s", last_err)
         return None
 
-    async def _login_one(self, s: aiohttp.ClientSession, login_url: str) -> str | None:
-        """GET form → POST credentials → return token or None."""
-
-        # Step 1 — GET login page (collect hidden CSRF fields + any existing cookie)
-        post_url = login_url
-        hidden:   dict[str, str] = {}
+    async def _login_one(self, s: aiohttp.ClientSession, login_page_url: str) -> str | None:
+        """POST credentials to auth API endpoint and extract auth_token from JSON response.
+        
+        The correct login endpoint is /login/api/auth.php (not the form action).
+        Returns the auth_token from JSON response {"authenticated": true, "auth_token": "..."}
+        """
+        
+        # The CORRECT login API endpoint (discovered via browser DevTools)
+        login_api_url = "https://fresh-r.me/login/api/auth.php"
+        
+        # Step 1 — GET login page to establish PHPSESSID cookie
         try:
-            async with s.get(login_url, allow_redirects=True,
+            s = self._get_session()
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            }
+            self._log_request('GET', login_page_url, headers)
+            
+            async with s.get(login_page_url, allow_redirects=True,
+                             headers=headers,
                              timeout=aiohttp.ClientTimeout(total=15)) as r:
-                html     = await r.text()
-                hidden   = _hidden_inputs(html)
-                post_url = _form_action(html, login_url)
-                tok = _token_in_jar(s.cookie_jar) or _token_in_headers(r.headers)
-                if tok:
-                    return tok
-                if r.status not in (200, 301, 302):
-                    _LOGGER.warning("GET %s returned HTTP %s — login page blocked?", login_url, r.status)
-                _LOGGER.debug("GET %s → %s hidden=%s action=%s", login_url, r.status, list(hidden.keys()), post_url)
-        except aiohttp.ClientError as e:
-            _LOGGER.warning("GET %s failed: %s", login_url, e)
-            pass   # Continue to POST with no hidden fields
-
-        # Step 2 — POST credentials
-        # Note: "page=login" is a URL query param, not a form body field
-        form = {**hidden, "email": self._email, "password": self._password}
-        async with s.post(
-            post_url,
-            data=form,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Origin":       _origin(login_url),
-                "Referer":      login_url,
-            },
-            allow_redirects=False,
-            timeout=aiohttp.ClientTimeout(total=20),
-        ) as r:
-            loc = r.headers.get("Location", "")
-            _LOGGER.debug(
-                "POST %s → status=%s loc=%s cookies=%s",
-                post_url, r.status, loc or "(none)", [c.key for c in s.cookie_jar],
-            )
-
-            tok = _token_in_headers(r.headers) or _token_in_jar(s.cookie_jar) or _token_in_url(loc)
-            if tok:
-                return tok
-
-            # Redirected back to login — credentials rejected or no token yet
-            if "page=login" in loc:
                 body = await r.text()
-                if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
-                    raise FreshRAuthError("Server rejected credentials")
-                _LOGGER.debug("Redirect back to login — trying next URL")
+                self._log_response(r.status, str(r.url), dict(r.headers), body, s.cookie_jar)
+        except aiohttp.ClientError as e:
+            _LOGGER.warning("GET %s failed: %s", login_page_url, e)
+
+        # Step 2 — POST credentials to the API endpoint
+        form = {"email": self._email, "password": self._password}
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "*/*",
+            "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Origin": "https://fresh-r.me",
+            "Referer": login_page_url,
+            "X-Requested-With": "XMLHttpRequest",
+            "DNT": "1",
+            "Priority": "u=1, i",
+            "Sec-Ch-Ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        }
+        
+        data_string = f"email={self._email}&password={self._password}"
+        self._log_request('POST', login_api_url, headers, data_string)
+        
+        try:
+            async with s.post(
+                login_api_url,
+                data=form,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                body = await r.text()
+                self._log_response(r.status, str(r.url), dict(r.headers), body, s.cookie_jar)
+                _LOGGER.debug("Login API response: %s", body[:200])
+                
+                if r.status == 200:
+                    try:
+                        data = json.loads(body)
+                        if data.get("authenticated") == True and "auth_token" in data:
+                            auth_token = data["auth_token"]
+                            _LOGGER.info("Login successful - auth_token received")
+                            return auth_token
+                        elif data.get("authenticated") == False:
+                            msg = data.get("message", "Unknown error")
+                            _LOGGER.warning("Login failed: %s", msg)
+                            if "Too many login attempts" in msg:
+                                raise FreshRAuthError(f"Rate limited: {msg}")
+                            return None
+                    except json.JSONDecodeError:
+                        _LOGGER.warning("Login response is not valid JSON: %s", body[:100])
+                        
                 return None
 
-            if r.status == 200:
-                body = await r.text()
-                tok = _token_in_html(body)
-                if tok:
-                    return tok
-                # Website may JS-redirect to dashboard.bw-log.com with token in URL
-                js_loc = _js_redirect(body)
-                if js_loc:
-                    _LOGGER.debug("JS/meta redirect detected: %s", js_loc)
-                    tok = _token_in_url(js_loc)
-                    if tok:
-                        return tok
-                    if not loc:  # Use as fallback for step 3
-                        loc = js_loc if js_loc.startswith("http") else urljoin(post_url, js_loc)
-                if "invalid" in body.lower() or "incorrect" in body.lower() or "wrong" in body.lower():
-                    raise FreshRAuthError("Server rejected credentials")
-                _LOGGER.warning(
-                    "POST %s → 200 but no token found. JS-redirect: %s. Body snippet: %.300s",
-                    post_url, js_loc or "(none)", body[:300],
-                )
-
-        # Step 3 — follow redirect to dashboard (dashboard.bw-log.com/?page=devices)
-        # Token may be in the dashboard page HTML/JS or in a cookie set after redirect
-        if loc:
-            abs_loc = loc if loc.startswith("http") else urljoin(post_url, loc)
-            try:
-                async with s.get(abs_loc, allow_redirects=True,
-                                 timeout=aiohttp.ClientTimeout(total=10)) as r2:
-                    dashboard_html = await r2.text()
-                    tok = (
-                        _token_in_headers(r2.headers) or
-                        _token_in_jar(s.cookie_jar) or
-                        _token_in_url(str(r2.url)) or
-                        _token_in_html(dashboard_html)
-                    )
-                    if tok:
-                        return tok
-                    _LOGGER.warning(
-                        "Step 3 GET %s → %s (final URL: %s) — no token. Cookies: %s. Body snippet: %.300s",
-                        abs_loc, r2.status, str(r2.url),
-                        [c.key for c in s.cookie_jar], dashboard_html[:300],
-                    )
-            except aiohttp.ClientError as e:
-                _LOGGER.debug("Follow redirect error: %s", e)
-
-        _LOGGER.warning("No token found via %s. Cookie names in jar: %s",
-                        login_url, [c.key for c in s.cookie_jar])
-        return None
+        except aiohttp.ClientError as e:
+            raise FreshRConnectionError(str(e)) from e
 
     # ── Device discovery ───────────────────────────────────────────────────────
 
     async def async_discover_devices(self) -> list[dict]:
-        """Return all devices on this account: [{id, type, room}]."""
-        raw = await self._call({
-            "user_units": {"request": "syssearch", "role": "user", "fields": ["units"]},
-        })
-        units = raw.get("user_units", {}).get("units", [])
-        if not units:
-            return []
+        """Return all devices on this account.
 
-        sys_req = {
-            u["id"]: {"request": "sysinfo", "id": u["id"], "fields": ["type", "room"]}
-            for u in units
-        }
-        sys_raw = await self._call(sys_req)
-
-        devices = []
-        for u in units:
-            uid  = u["id"]
-            info = sys_raw.get(uid, {})
-            devices.append({
-                "id":   uid,
-                "type": info.get("type", "Fresh-r"),
-                "room": info.get("room", ""),
+        Strategy:
+          1. Try the JSON API (syssearch + sysinfo).
+          2. If that yields nothing, fall back to scraping the devices page HTML
+             for serial numbers embedded in dashboard links.
+        """
+        # Strategy 1: JSON API
+        try:
+            raw = await self._call({
+                "user_units": {"request": "syssearch", "role": "user", "fields": ["units"]},
             })
-        _LOGGER.info("Discovered %d device(s): %s", len(devices), [d["id"] for d in devices])
-        return devices
+            units = raw.get("user_units", {}).get("units", [])
+            if units:
+                sys_req = {
+                    u["id"]: {"request": "sysinfo", "id": u["id"], "fields": ["type", "room"]}
+                    for u in units
+                }
+                sys_raw = await self._call(sys_req)
+                devices = []
+                for u in units:
+                    uid  = u["id"]
+                    info = sys_raw.get(uid, {})
+                    devices.append({
+                        "id":   uid,
+                        "type": info.get("type", "Fresh-r"),
+                        "room": info.get("room", ""),
+                    })
+                _LOGGER.info("Discovered %d device(s) via API: %s", len(devices), [d["id"] for d in devices])
+                return devices
+        except (FreshRConnectionError, Exception) as e:  # noqa: BLE001
+            _LOGGER.warning("API device discovery failed (%s) — falling back to HTML scraping", e)
+
+        # Strategy 2: scrape the devices page for serial numbers in dashboard links
+        return await self._discover_from_html()
+
+    async def _discover_from_html(self) -> list[dict]:
+        """GET dashboard.bw-log.com/?page=devices and extract serial numbers."""
+        s = self._get_session()
+        devices_url = f"{API_BASE}/?page=devices"
+        
+        # Add auth_token as cookie for dashboard access
+        from yarl import URL
+        s.cookie_jar.update_cookies(
+            {"auth_token": self._token or ""},
+            URL("https://dashboard.bw-log.com")
+        )
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
+            "Accept-Encoding": "gzip, deflate",  # Remove brotli to avoid encoding issues
+            "Connection": "keep-alive",
+            "Referer": "https://fresh-r.me/login/index.php?page=login",
+        }
+        
+        self._log_request('GET', devices_url, headers)
+        
+        try:
+            async with s.get(devices_url, allow_redirects=True,
+                             headers=headers,
+                             timeout=aiohttp.ClientTimeout(total=15)) as r:
+                html = await r.text()
+                self._log_response(r.status, str(r.url), dict(r.headers), html, s.cookie_jar)
+                _LOGGER.debug(
+                    "Devices page GET %s → %s (final: %s)",
+                    devices_url, r.status, str(r.url),
+                )
+                if r.status != 200:
+                    _LOGGER.error("Devices page returned HTTP %s", r.status)
+                    return []
+
+                serials = _serials_in_html(html)
+                if not serials:
+                    _LOGGER.warning(
+                        "No serial numbers found on devices page. Body snippet: %.500s", html[:500]
+                    )
+                    return []
+
+                _LOGGER.info("Discovered device serial(s) from HTML: %s", serials)
+                return [{"id": s, "type": "Fresh-r", "room": ""} for s in serials]
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Could not fetch devices page: %s", e)
+            return []
 
     # ── Current data ───────────────────────────────────────────────────────────
 
     async def async_get_current(self, serial: str) -> dict[str, Any]:
         """Fetch current sensor values for one device."""
+        # Check if token needs proactive refresh
+        if self._token and self._token_time:
+            token_age = (datetime.now(timezone.utc) - self._token_time).total_seconds()
+            if token_age > (TOKEN_EXPIRY_SECONDS - TOKEN_REFRESH_SECONDS):
+                _LOGGER.info("Token expires soon (%.0fs old) - proactive re-login", token_age)
+                await self._refresh_token()
+        
         if not self._token:
             await self.async_login()
+            
         try:
             raw = await self._call({
                 "current-data": {
@@ -360,8 +543,7 @@ class FreshRApiClient:
             })
         except FreshRConnectionError:
             _LOGGER.info("API error — re-authenticating")
-            self._token = None
-            await self.async_login()
+            await self._refresh_token()
             raw = await self._call({
                 "current-data": {
                     "request": "fresh-r-now",
@@ -379,19 +561,28 @@ class FreshRApiClient:
         return str(abs(int(off.total_seconds() / 60))) if off else "0"
 
     async def _call(self, requests: dict[str, Any]) -> dict[str, Any]:
+        """POST to api.php using the auth_token and proper headers."""
+        s = self._get_session()
         q = json.dumps({
-            "token":    self._token,
+            "token":    self._token or "",
             "tzoffset": self._tzoffset(),
             "requests": requests,
         })
         try:
-            async with self._ha_session.post(
-                API_URL, params={"q": q},
+            async with s.post(
+                API_URL, 
+                params={"q": q},
+                headers={
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Origin": "https://dashboard.bw-log.com",
+                    "Referer": "https://dashboard.bw-log.com/?page=devices",
+                },
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
                 if r.status != 200:
                     raise FreshRConnectionError(f"HTTP {r.status}")
                 text = await r.text()
+                _LOGGER.debug("api.php response: %.300s", text[:300])
                 return json.loads(text) if text.strip() else {}
         except aiohttp.ClientError as e:
             raise FreshRConnectionError(str(e)) from e
@@ -428,3 +619,10 @@ class FreshRApiClient:
             result.update(derive(result))
 
         return result
+
+    async def _refresh_token(self) -> None:
+        """Refresh the authentication token."""
+        _LOGGER.debug("Refreshing authentication token")
+        self._token = None
+        self._token_time = None
+        await self.async_login()

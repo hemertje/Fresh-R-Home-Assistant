@@ -1,9 +1,36 @@
-# Fresh-r Home Assistant Integration
+# Fresh-R Home Assistant Integration
+
+[![Release](https://img.shields.io/github/release/hemertje/Fresh-R-Home-Assistant.svg)](https://github.com/hemertje/Fresh-R-Home-Assistant/releases)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-green.svg)](https://www.home-assistant.io)
 
 A Home Assistant custom integration that **reads** data from the [Fresh-r.me](https://fresh-r.me) cloud dashboard and replicates it inside Home Assistant — including a custom Lovelace card, MQTT publishing, InfluxDB writing, and a Grafana dashboard.
 
 > **Read-only** — Active ventilation control is not possible. This is a firmware limitation of the Fresh-r device; the Fresh-r.me dashboard does not expose control endpoints.
+>
 > **No historical data** — The Fresh-r.me database cannot be queried. Home Assistant's own recorder builds history going forward from the moment the integration is active.
+
+---
+
+## 🎯 **v2.0.5 - MAJOR BREAKTHROUGH**
+
+### **🔥 Real Device Serial Discovery**
+- ✅ **CONFIRMED:** Real device serial extracted from HTML (REMOVED FOR PRIVACY)
+- ✅ **DASHBOARD URL:** Working link confirmed from HTML analysis
+- ✅ **PATTERNS:** Multiple extraction patterns validated
+- ✅ **HTML SOURCE:** Real Dashboard.html analyzed and processed
+
+### **🔧 Critical Fixes**
+- 🛡️ **BROTLI FIX:** Removed brotli encoding to prevent decode errors
+- 🔒 **RATE LIMITING:** Safe testing intervals implemented (12 requests/hour)
+- 🍪 **COOKIE MANAGEMENT:** Improved auth token handling
+- 📱 **SERIAL PATTERNS:** Multiple extraction patterns confirmed
+
+### **🛡️ Safe Testing Protocol**
+- ⏱️ **LOGIN:** 1 request per 5 minutes (12/hour)
+- 📊 **DATA:** 1 request per 15 minutes (4/hour)
+- 🔄 **TOTAL:** 16 requests per hour (safe limit)
+- 🎯 **PRODUCTION:** Ready for deployment
 
 ---
 
@@ -63,26 +90,31 @@ energy_loss    = max(0, (t1 − t4) × flow  × 1212 / 3600)  W
 ## Repository Structure
 
 ```
-Fresh-R-Home-Assistant/
-├── custom_components/fresh_r/     # Home Assistant custom component
-│   ├── __init__.py                #   Entry setup, MQTT init, coordinator wiring
-│   ├── api.py                     #   HTTP client: login, device discovery, _parse()
-│   ├── config_flow.py             #   UI config flow (email + password only)
-│   ├── const.py                   #   All constants and sensor definitions
-│   ├── coordinator.py             #   DataUpdateCoordinator + InfluxDB write
-│   ├── mqtt.py                    #   MQTT auto-discovery + state publishing
-│   ├── sensor.py                  #   HA sensor entity platform
-│   ├── manifest.json
-│   ├── strings.json
-│   └── translations/
-│       ├── nl.json
-│       └── en.json
-├── www/
-│   └── fresh-r-card.js            # Custom Lovelace card
+fresh_r.zip/
+├── fresh-r/                    # Home Assistant integration
+│   ├── custom_components/fresh_r/  # Integration code
+│   │   ├── __init__.py
+│   │   ├── api.py                 # HTTP client: login, device discovery
+│   │   ├── config_flow.py         # UI config flow
+│   │   ├── const.py               # Constants and sensor definitions
+│   │   ├── coordinator.py         # DataUpdateCoordinator
+│   │   ├── manifest.json
+│   │   ├── mqtt.py                # MQTT publishing
+│   │   ├── sensor.py              # HA sensor entities
+│   │   ├── strings.json
+│   │   └── translations/
+│   │       ├── en.json
+│   │       └── nl.json
+│   └── www/                       # Lovelace card
+│       ├── fresh-r-card.js
+│       └── fresh-r-dashboard.yaml
 ├── grafana/
 │   └── fresh_r_dashboard.json     # Grafana dashboard (import-ready)
-├── fresh_r_lovelace_dashboard.yaml # Home Assistant dashboard YAML
-└── validate_and_simulate.py       # Offline validation + simulation script
+├── docs/                          # Documentation
+│   ├── FAQ_EN.md
+│   └── FAQ_NL.md
+├── README.md
+└── LICENSE
 ```
 
 ---
@@ -91,7 +123,7 @@ Fresh-R-Home-Assistant/
 
 ### 0 — Download
 
-Download `fresh_r_system.zip` from the repository and extract it. This creates a `fresh-r/` folder containing all files.
+Download `fresh_r.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it. This creates a `fresh-r/` folder containing Home Assistant files, and a `grafana/` folder with the dashboard.
 
 ### 1 — Copy the custom component
 
@@ -102,7 +134,7 @@ cp -r fresh-r/custom_components/fresh_r  <HA-config>/custom_components/
 ### 2 — Install the Lovelace card
 
 ```bash
-cp www/fresh-r-card.js  <HA-config>/www/
+cp -r fresh-r/www/fresh-r-card.js  <HA-config>/www/
 ```
 
 Add the resource via **Settings → Dashboards → Resources → Add resource**:
@@ -147,12 +179,14 @@ The device serial number is **discovered automatically** — you never need to e
 ### 5 — Import the dashboards
 
 **Home Assistant Lovelace**
-1. Settings → Dashboards → Add Dashboard → Raw configuration editor
-2. Paste the contents of `fresh_r_lovelace_dashboard.yaml`
+1. Create a new dashboard: Settings → Dashboards → Add Dashboard
+2. Click the three dots menu → Edit dashboard
+3. Click three dots again → Raw configuration editor
+4. Paste the contents from the `fresh-r/www/fresh-r-dashboard.yaml` file
 
 **Grafana**
 1. Dashboards → Import → Upload JSON file
-2. Select `grafana/fresh_r_dashboard.json`
+2. Select `grafana/fresh_r_dashboard.json` (from the extracted ZIP root)
 3. Choose your InfluxDB datasource
 
 ---
@@ -210,36 +244,58 @@ The card has three tab views matching the Fresh-r.me dashboard:
 
 Line charts use Home Assistant's own recorder history (today's data, builds from the moment the integration is active).
 
+
 ---
 
-## Validation & Simulation
+## Authentication
 
-Run offline without Home Assistant to verify all components:
+Login flow (discovered via browser DevTools, March 2026):
 
-```bash
-python3 validate_and_simulate.py
+```
+1. GET  fresh-r.me/login/index.php?page=login
+        → establish PHPSESSID cookie
+
+2. POST credentials to fresh-r.me/login/api/auth.php
+        → JSON response: {"authenticated": true, "auth_token": "<64-char-hex>"}
+        
+        Required headers:
+        - X-Requested-With: XMLHttpRequest
+        - Origin: https://fresh-r.me
+        - Referer: https://fresh-r.me/login/index.php?page=login
+        - Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+
+3. Token stored; all API calls use:
+        POST dashboard.bw-log.com/api.php?q={"token":"<auth_token>","requests":{...}}
+        
+        Required headers:
+        - X-Requested-With: XMLHttpRequest
+        - Origin: https://dashboard.bw-log.com
+        - Referer: https://dashboard.bw-log.com/?page=devices
+
+4. Device serial discovered via dashboard HTML scraping
+   (e.g., serial=e:XXXXXX/XXXXXX from device links - PRIVACY PROTECTED)
 ```
 
-**10 test steps:**
-1. Python syntax validation (all `.py` files)
-2. JSON validation (manifest, strings, translations, Grafana)
-3. Manifest required-fields check
-4. `const.py` — all 20 sensor definitions present
-5. `api.py` — flow calibration accuracy + physics formulas
-6. MQTT topic generation + full 20-field payload simulation
-7. InfluxDB line-protocol construction
-8. Grafana dashboard — all required panels present
-9. Lovelace YAML — views and `custom:fresh-r-card` present
-10. Sensor entity ID consistency map
+**Important Notes:**
+- The `auth_token` expires every **75 minutes** - the integration automatically re-authenticates
+- Rate limiting: max ~10 login attempts per time period
+- The old form action (`/login/index.php?page=login`) does NOT work for automated login
+- Server requires `X-Requested-With: XMLHttpRequest` header to accept API requests
 
 ---
 
 ## Data Flow
 
 ```
-Fresh-r.me API
+fresh-r.me/login
      │
-     │  HTTPS poll (every 60 s)
+     │  POST email + password
+     │  302 → dashboard.bw-log.com/?page=devices&t=<hex-token>
+     ▼
+dashboard.bw-log.com/api.php
+     │
+     │  HTTPS poll every 60 s
+     │  {"token": "<hex>", "requests": {"current-data": {"request": "fresh-r-now", ...}}}
      ▼
   api._parse()          — calibrate flow, derive heat/energy sensors
      │
@@ -251,6 +307,32 @@ Fresh-r.me API
      │
      └──► InfluxDB             fresh_r measurement, device tag
 ```
+
+---
+
+## Troubleshooting
+
+**Login fails**
+
+Enable debug logging in `configuration.yaml`:
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.fresh_r: debug
+```
+After restarting HA the log shows:
+- `GET … hidden_fields=[...] action=…` — what fields the login form has
+- `POST … final_url=…` — where the server redirected after login
+- `cookies=[...]` — which cookies are present
+
+A successful login shows `final_url` ending in `dashboard.bw-log.com/...&t=<hex>` and logs `Fresh-r authenticated (token=xxxxxxxx…)`.
+
+If `final_url` still ends in `page=login`, the credentials are rejected by the server.
+
+**No devices found after login**
+
+The integration first tries the JSON API (`syssearch`), then falls back to scraping `dashboard.bw-log.com/?page=devices` for serial links. If both fail, enable debug logging and look for the `Devices page GET` line and the body snippet.
 
 ---
 

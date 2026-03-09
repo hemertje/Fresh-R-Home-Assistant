@@ -1,7 +1,7 @@
 {
   "domain": "fresh_r",
   "name": "Fresh-r",
-  "version": "1.1.0",
+  "version": "2.0.5",
   "documentation": "https://github.com/hemertje/Fresh-R-Home-Assistant",
   "issue_tracker": "https://github.com/hemertje/Fresh-R-Home-Assistant/issues",
   "requirements": ["aiohttp>=3.8.0"],

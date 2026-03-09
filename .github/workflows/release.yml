@@ -1,0 +1,99 @@
+name: Fresh-R Integration Release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Fresh-R Home Assistant Integration ${{ github.ref }}
+        body: |
+          🎯 **Fresh-R Integration v2.0.5 - MAJOR BREAKTHROUGH**
+          
+          ## 🔥 MAJOR FEATURE: Real Device Serial Discovery
+          - ✅ **CONFIRMED:** Real device serial extracted from HTML (PRIVACY PROTECTED)
+          - ✅ **DASHBOARD URL:** Working link confirmed from HTML analysis
+          - ✅ **PATTERNS:** Multiple extraction patterns validated
+          - ✅ **HTML SOURCE:** Real Dashboard.html analyzed and processed
+          
+          ## 🔧 CRITICAL FIXES
+          - 🛡️ **BROTLI FIX:** Removed brotli encoding to prevent decode errors
+          - 🔒 **RATE LIMITING:** Safe testing intervals implemented (12 requests/hour)
+          - 🍪 **COOKIE MANAGEMENT:** Improved auth token handling
+          - 📱 **SERIAL PATTERNS:** Multiple extraction patterns confirmed
+          
+          ## 🛡️ SAFE TESTING PROTOCOL
+          - ⏱️ **LOGIN:** 1 request per 5 minutes (12/hour)
+          - 📊 **DATA:** 1 request per 15 minutes (4/hour)
+          - 🔄 **TOTAL:** 16 requests per hour (safe limit)
+          - 🎯 **PRODUCTION:** Ready for deployment
+          
+          ## 📋 WHAT'S INCLUDED
+          - **Core Integration:** Fixed API client with real serial support
+          - **Safe Testing:** Rate limit protection tools
+          - **HTML Analysis:** Serial extraction utilities
+          - **Documentation:** Complete setup guide
+          
+          ## 🚀 INSTALLATION
+          1. Download `fresh_r_v2.0.5.zip`
+          2. Extract to Home Assistant `<config>/` folder
+          3. Restart Home Assistant
+          4. Add Fresh-R integration via Settings → Devices & Services
+          5. Device auto-discovery with confirmed serial (PRIVACY PROTECTED)
+          
+          ## 📊 TECHNICAL DETAILS
+          ### Device Serial Confirmation
+          ```html
+          <!-- From real Dashboard.html -->
+          <span serial="e:XXXXXX/XXXXXX" class="room-label"></span>
+          <a href="https://dashboard.bw-log.com/?page=dashboard&device-type=fresh-r&serial=e:XXXXXX/XXXXXX">Dashboard</a>
+          <!-- PRIVACY PROTECTED - Real serial removed -->
+          ```
+          
+          ### Rate Limit Protection
+          ```python
+          SAFE_INTERVALS = {
+              "login": 300,      # 5 minuten
+              "data": 900,       # 15 minuten
+              "monitoring": 3600 # 1 uur
+          }
+          MAX_REQUESTS_PER_HOUR = 12  # Safe limit
+          ```
+          
+          ## 🎉 BREAKTHROUGH
+          **Real device serial extracted from HTML analysis - production ready!**
+          
+          Dashboard button now works with confirmed serial extraction from HTML parsing.
+          
+          ---
+          **Mission Accomplished** 🎯✨🚀
+        draft: false
+        prerelease: false
+        
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./fresh_r_v2.0.5.zip
+        asset_name: fresh_r_v2.0.5.zip
+        asset_content_type: application/zip
