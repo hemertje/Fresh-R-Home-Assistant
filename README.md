@@ -116,29 +116,31 @@ energy_loss    = max(0, (t1 − t4) × flow  × 1212 / 3600)  W
 ## Repository Structure
 
 ```
-fresh_r.zip/
-├── fresh-r/                    # Home Assistant integration
-│   ├── custom_components/fresh_r/  # Integration code
-│   │   ├── __init__.py
-│   │   ├── api.py                 # HTTP client: login, device discovery
-│   │   ├── config_flow.py         # UI config flow
-│   │   ├── const.py               # Constants and sensor definitions
-│   │   ├── coordinator.py         # DataUpdateCoordinator
-│   │   ├── manifest.json
-│   │   ├── mqtt.py                # MQTT publishing
-│   │   ├── sensor.py              # HA sensor entities
-│   │   ├── strings.json
-│   │   └── translations/
-│   │       ├── en.json
-│   │       └── nl.json
-│   └── www/                       # Lovelace card
-│       ├── fresh-r-card.js
-│       └── fresh-r-dashboard.yaml
+fresh-r-home-assistant/
+├── custom_components/fresh_r/  # Home Assistant integration
+│   ├── __init__.py
+│   ├── api.py                 # HTTP client: login, device discovery
+│   ├── config_flow.py         # UI config flow
+│   ├── const.py               # Constants and sensor definitions
+│   ├── coordinator.py         # DataUpdateCoordinator
+│   ├── manifest.json
+│   ├── mqtt.py                # MQTT publishing
+│   ├── sensor.py              # HA sensor entities
+│   ├── strings.json
+│   └── translations/
+│       ├── en.json            # English translations
+│       ├── nl.json            # Dutch translations
+│       ├── de.json            # German translations
+│       └── fr.json            # French translations
+├── www/                       # Lovelace card
+│   ├── fresh-r-card.js        # Multi-language dashboard card
+│   └── fresh-r-dashboard.yaml # Enhanced dashboard configuration
 ├── grafana/
-│   └── fresh_r_dashboard.json     # Grafana dashboard (import-ready)
-├── docs/                          # Documentation
-│   ├── FAQ_EN.md
-│   └── FAQ_NL.md
+│   └── fresh_r_dashboard.json # Grafana dashboard (import-ready)
+├── docs/                      # Documentation and utilities
+│   ├── FAQ.md                 # Frequently Asked Questions
+│   ├── validate_and_simulate.py  # Testing utility
+│   └── fresh_r_lovelace_dashboard.yaml  # Legacy dashboard
 ├── README.md
 └── LICENSE
 ```
