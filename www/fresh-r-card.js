@@ -212,11 +212,11 @@ class RadialChart {
       // Outdoor temp
       ctx.fillStyle = COLORS.temp_outdoor;
       ctx.font      = `${size * 0.035}px sans-serif`;
-      ctx.fillText('buiten ' + (+t2).toFixed(1) + '°C', cx, cy + size * 0.095);
+      ctx.fillText('outside ' + (+t2).toFixed(1) + '°C', cx, cy + size * 0.095);
     } else {
       ctx.fillStyle = COLORS.muted;
       ctx.font      = `${size * 0.04}px sans-serif`;
-      ctx.fillText('Geen data', cx, cy);
+      ctx.fillText('No data', cx, cy);
     }
   }
 }
@@ -238,7 +238,7 @@ function drawLineChart(canvas, datasets, ylabel) {
     ctx.fillStyle = COLORS.muted;
     ctx.font      = '12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Geen data', W / 2, H / 2);
+    ctx.fillText('No data', W / 2, H / 2);
     return;
   }
 
@@ -509,32 +509,32 @@ class FreshRCard extends HTMLElement {
 
     if (tab === 'oxygen') {
       // Chart 1: Indoor vs Outdoor temperature
-      this._shadow.getElementById('c1-label').textContent = 'Temperatuur (°C)';
+      this._shadow.getElementById('c1-label').textContent = 'Temperature (°C)';
       drawLineChart(this._c1, [
-        { label: 'Binnenlucht (t1)',  color: COLORS.temp_indoor,  data: this._histSeries('t1') },
-        { label: 'Buitenlucht (t2)', color: COLORS.temp_outdoor, data: this._histSeries('t2') },
-        { label: 'Aanvoer (t3)',      color: COLORS.temp_supply,  data: this._histSeries('t3') },
-        { label: 'Afvoer (t4)',       color: COLORS.temp_exhaust, data: this._histSeries('t4') },
+        { label: 'Indoor Air (t1)',  color: COLORS.temp_indoor,  data: this._histSeries('t1') },
+        { label: 'Outdoor Air (t2)', color: COLORS.temp_outdoor, data: this._histSeries('t2') },
+        { label: 'Supply Air (t3)',      color: COLORS.temp_supply,  data: this._histSeries('t3') },
+        { label: 'Exhaust Air (t4)',       color: COLORS.temp_exhaust, data: this._histSeries('t4') },
       ]);
       // Chart 2: Flow
       drawLineChart(this._c2, [
-        { label: 'Debiet (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
+        { label: 'Flow (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
       ]);
       // Chart 3: Heat
       drawLineChart(this._c3, [
-        { label: 'Warmteterugwinning', color: COLORS.heat,   data: this._histSeries('heat_recovered') },
-        { label: 'Ref ventilatieverl', color: COLORS.loss,   data: this._histSeries('vent_loss') },
-        { label: 'Energieverlies',     color: COLORS.energy, data: this._histSeries('energy_loss') },
+        { label: 'Heat Recovery', color: COLORS.heat,   data: this._histSeries('heat_recovered') },
+        { label: 'Reference Ventilation Loss', color: COLORS.loss,   data: this._histSeries('vent_loss') },
+        { label: 'Energy Loss',     color: COLORS.energy, data: this._histSeries('energy_loss') },
       ]);
 
     } else if (tab === 'humidity') {
-      this._shadow.getElementById('c1-label').textContent = 'Vochtigheid (%)';
+      this._shadow.getElementById('c1-label').textContent = 'Humidity (%)';
       drawLineChart(this._c1, [
-        { label: 'Relatieve vochtigheid', color: COLORS.flow, data: this._histSeries('hum') },
-        { label: 'Dauwpunt (°C)',          color: COLORS.temp_outdoor, data: this._histSeries('dp') },
+        { label: 'Relative Humidity', color: COLORS.flow, data: this._histSeries('hum') },
+        { label: 'Dew Point (°C)',          color: COLORS.temp_outdoor, data: this._histSeries('dp') },
       ]);
       drawLineChart(this._c2, [
-        { label: 'Debiet (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
+        { label: 'Flow (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
       ]);
       drawLineChart(this._c3, [
         { label: 'CO2 (ppm)', color: COLORS.co2_good, data: this._histSeries('co2') },
@@ -543,12 +543,12 @@ class FreshRCard extends HTMLElement {
     } else if (tab === 'dust') {
       this._shadow.getElementById('c1-label').textContent = 'PM2.5 (µg/m³)';
       drawLineChart(this._c1, [
-        { label: 'Aanvoer PM2.5',   color: COLORS.temp_supply,  data: this._histSeries('d5_25') },
-        { label: 'Buiten PM2.5',    color: COLORS.temp_outdoor, data: this._histSeries('d4_25') },
-        { label: 'Binnen PM2.5',    color: COLORS.temp_indoor,  data: this._histSeries('d1_25') },
+        { label: 'Supply PM2.5',   color: COLORS.temp_supply,  data: this._histSeries('d5_25') },
+        { label: 'Outdoor PM2.5',    color: COLORS.temp_outdoor, data: this._histSeries('d4_25') },
+        { label: 'Indoor PM2.5',    color: COLORS.temp_indoor,  data: this._histSeries('d1_25') },
       ]);
       drawLineChart(this._c2, [
-        { label: 'Debiet (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
+        { label: 'Flow (m³/h)', color: COLORS.flow, data: this._histSeries('flow') },
       ]);
       drawLineChart(this._c3, [
         { label: 'CO2 (ppm)', color: COLORS.co2_good, data: this._histSeries('co2') },
@@ -567,14 +567,14 @@ class FreshRCard extends HTMLElement {
     const el   = this._val('energy_loss');
 
     const stats = [
-      { label: 'Binnentemp',        value: t1   !== null ? t1.toFixed(1)   + ' °C' : '–', color: COLORS.temp_indoor },
-      { label: 'Buitentemp',        value: t2   !== null ? t2.toFixed(1)   + ' °C' : '–', color: COLORS.temp_outdoor },
-      { label: 'Debiet',            value: flow !== null ? flow.toFixed(0) + ' m³/h' : '–', color: COLORS.flow },
+      { label: 'Indoor Temp',        value: t1   !== null ? t1.toFixed(1)   + ' °C' : '–', color: COLORS.temp_indoor },
+      { label: 'Outdoor Temp',        value: t2   !== null ? t2.toFixed(1)   + ' °C' : '–', color: COLORS.temp_outdoor },
+      { label: 'Flow',            value: flow !== null ? flow.toFixed(0) + ' m³/h' : '–', color: COLORS.flow },
       { label: 'CO2',               value: co2  !== null ? co2.toFixed(0)  + ' ppm' : '–', color: co2 !== null ? co2Color(co2) : COLORS.muted },
-      { label: 'Vochtigheid',       value: hum  !== null ? hum.toFixed(0)  + ' %'   : '–', color: COLORS.accent },
-      { label: 'Dauwpunt',          value: dp   !== null ? dp.toFixed(1)   + ' °C'  : '–', color: COLORS.muted },
-      { label: 'Warmteterugwinning',value: hr   !== null ? hr.toFixed(0)   + ' W'   : '–', color: COLORS.heat },
-      { label: 'Energieverlies',    value: el   !== null ? el.toFixed(0)   + ' W'   : '–', color: COLORS.energy },
+      { label: 'Humidity',       value: hum  !== null ? hum.toFixed(0)  + ' %'   : '–', color: COLORS.accent },
+      { label: 'Dew Point',          value: dp   !== null ? dp.toFixed(1)   + ' °C'  : '–', color: COLORS.muted },
+      { label: 'Heat Recovery',value: hr   !== null ? hr.toFixed(0)   + ' W'   : '–', color: COLORS.heat },
+      { label: 'Energy Loss',    value: el   !== null ? el.toFixed(0)   + ' W'   : '–', color: COLORS.energy },
     ];
 
     const container = this._shadow.getElementById('stats');
