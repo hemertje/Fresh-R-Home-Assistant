@@ -1,5 +1,7 @@
 # Fresh-R Home Assistant Integration
 
+![Fresh-R Logo](fresh-r-github-logo.svg)
+
 [![Release](https://img.shields.io/github/release/hemertje/Fresh-R-Home-Assistant.svg)](https://github.com/hemertje/Fresh-R-Home-Assistant/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-green.svg)](https://www.home-assistant.io)
@@ -151,18 +153,18 @@ Fresh-R-Home-Assistant/
 
 ### 0 — Download
 
-Download `fresh_r_v2.0.6.2_complete.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
+Download `fresh_r_v2.0.6.3_ha_friendly.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
 
 ### 1 — Copy the custom component
 
 ```bash
-cp -r custom_components/fresh_r  <HA-config>/custom_components/
+cp -r Home_Assistant_Installation/custom_components/fresh_r  <HA-config>/custom_components/
 ```
 
 ### 2 — Install the Lovelace card
 
 ```bash
-cp www/fresh-r-card.js  <HA-config>/www/
+cp Home_Assistant_Installation/www/fresh-r-card.js  <HA-config>/www/
 ```
 
 Add the resource via **Settings → Dashboards → Resources → Add resource**:
