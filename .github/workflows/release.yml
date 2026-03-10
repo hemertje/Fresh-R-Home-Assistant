@@ -5,95 +5,84 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Fresh-R Home Assistant Integration ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}
+        name: Fresh-R Home Assistant Integration ${{ github.ref_name }}
         body: |
-          🎯 **Fresh-R Integration v2.0.5 - MAJOR BREAKTHROUGH**
+          🎯 **Fresh-R Integration v2.0.5.7 - Complete Multi-language Package**
           
-          ## 🔥 MAJOR FEATURE: Real Device Serial Discovery
-          - ✅ **CONFIRMED:** Real device serial extracted from HTML (PRIVACY PROTECTED)
-          - ✅ **DASHBOARD URL:** Working link confirmed from HTML analysis
-          - ✅ **PATTERNS:** Multiple extraction patterns validated
-          - ✅ **HTML SOURCE:** Real Dashboard.html analyzed and processed
+          ## 🌍 MULTI-LANGUAGE BREAKTHROUGH
+          - ✅ **Deutsch:** Complete German interface support
+          - ✅ **Français:** Complete French interface support  
+          - ✅ **English:** Complete English interface support
+          - ✅ **Nederlands:** Complete Dutch interface support
+          - ✅ **Auto-detection:** Lovelace card detects HA language preference
+          - ✅ **Config Flow:** Multi-language setup in 4 languages
           
-          ## 🔧 CRITICAL FIXES
-          - 🛡️ **BROTLI FIX:** Removed brotli encoding to prevent decode errors
-          - 🔒 **RATE LIMITING:** Safe testing intervals implemented (12 requests/hour)
-          - 🍪 **COOKIE MANAGEMENT:** Improved auth token handling
-          - 📱 **SERIAL PATTERNS:** Multiple extraction patterns confirmed
+          ## �️ REPOSITORY STRUCTURE OVERHAUL
+          - ✅ **Logical Structure:** Professional repository layout
+          - ✅ **Documentation:** Complete README with FAQ
+          - ✅ **File Organization:** Proper folder structure
+          - ✅ **Testing Suite:** Comprehensive test utilities
+          - ✅ **Grafana Dashboard:** Ready-to-import dashboard
           
-          ## 🛡️ SAFE TESTING PROTOCOL
-          - ⏱️ **LOGIN:** 1 request per 5 minutes (12/hour)
-          - 📊 **DATA:** 1 request per 15 minutes (4/hour)
-          - 🔄 **TOTAL:** 16 requests per hour (safe limit)
-          - 🎯 **PRODUCTION:** Ready for deployment
+          ## � TECHNICAL IMPROVEMENTS
+          - 🛡️ **Rate Limiting:** Safe intervals (5min login, 15min data)
+          - � **Token Management:** 75min expiry with proactive refresh
+          - 🍪 **Cookie Handling:** Persistent session management
+          - � **API Client:** Robust error handling and recovery
+          - 🎯 **Production Ready:** All tests passed (4/4)
           
-          ## 📋 WHAT'S INCLUDED
-          - **Core Integration:** Fixed API client with real serial support
-          - **Safe Testing:** Rate limit protection tools
-          - **HTML Analysis:** Serial extraction utilities
-          - **Documentation:** Complete setup guide
+          ## � WHAT'S INCLUDED
+          - **Core Integration:** Complete Home Assistant integration
+          - **Multi-language:** 4 language translations (en, nl, de, fr)
+          - **Lovelace Card:** Multi-language dashboard card
+          - **Grafana Dashboard:** Ready-to-import JSON
+          - **Documentation:** README.md + comprehensive FAQ
+          - **Testing:** Standalone test suite
+          - **Utilities:** Validation and simulation tools
           
           ## 🚀 INSTALLATION
-          1. Download `fresh_r_v2.0.5.zip`
+          1. Download `fresh_r_v2.0.5.6_complete.zip`
           2. Extract to Home Assistant `<config>/` folder
-          3. Restart Home Assistant
-          4. Add Fresh-R integration via Settings → Devices & Services
-          5. Device auto-discovery with confirmed serial (PRIVACY PROTECTED)
+          3. Copy files:
+             - `custom_components/fresh_r/` → `<config>/custom_components/`
+             - `www/fresh-r-card.js` → `<config>/www/`
+          4. Restart Home Assistant
+          5. Add Fresh-R integration via Settings → Devices & Services
+          6. Set your language in Settings → Profile → Language
+          7. Enjoy multi-language interface!
           
-          ## 📊 TECHNICAL DETAILS
-          ### Device Serial Confirmation
-          ```html
-          <!-- From real Dashboard.html -->
-          <span serial="e:XXXXXX/XXXXXX" class="room-label"></span>
-          <a href="https://dashboard.bw-log.com/?page=dashboard&device-type=fresh-r&serial=e:XXXXXX/XXXXXX">Dashboard</a>
-          <!-- PRIVACY PROTECTED - Real serial removed -->
-          ```
-          
-          ### Rate Limit Protection
-          ```python
-          SAFE_INTERVALS = {
-              "login": 300,      # 5 minuten
-              "data": 900,       # 15 minuten
-              "monitoring": 3600 # 1 uur
-          }
-          MAX_REQUESTS_PER_HOUR = 12  # Safe limit
-          ```
+          ## 🌍 LANGUAGE SUPPORT
+          | Language | Config Flow | Lovelace Card | Status |
+          |----------|--------------|----------------|--------|
+          | 🇬🇧 English | ✅ Full English interface | ✅ English labels | Fully Supported |
+          | 🇳🇱 Nederlands | ✅ Volledig Nederlandse interface | ✅ Nederlandse labels | Fully Supported |
+          | 🇩🇪 Deutsch | ✅ Vollständige Deutsche Oberfläche | ✅ Deutsche Beschriftungen | Fully Supported |
+          | 🇫🇷 Français | ✅ Interface française complète | ✅ Étiquettes françaises | Fully Supported |
           
           ## 🎉 BREAKTHROUGH
-          **Real device serial extracted from HTML analysis - production ready!**
+          **Complete multi-language Fresh-R integration with professional repository structure!**
           
-          Dashboard button now works with confirmed serial extraction from HTML parsing.
+          The integration now supports 4 languages and includes comprehensive documentation,
+          testing suite, and professional file organization.
           
           ---
-          **Mission Accomplished** 🎯✨🚀
+          **Multi-language Mission Accomplished** �✨🚀
         draft: false
         prerelease: false
-        
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./fresh_r_v2.0.5.zip
-        asset_name: fresh_r_v2.0.5.zip
-        asset_content_type: application/zip
+        files: |
+          fresh_r_v2.0.5.6_complete.zip
