@@ -151,7 +151,7 @@ fresh-r-home-assistant/
 
 ### 0 — Download
 
-Download `fresh_r_v2.0.5.9_ha_complete.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
+Download `fresh_r_v2.0.5.6_complete.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
 
 ### 1 — Copy the custom component
 

@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Fresh-r einrichten",
+        "description": "Geben Sie Ihre fresh-r.me Anmeldedaten ein. Die Geräteseriennummer wird automatisch erkannt.",
+        "data": {
+          "email":           "E-Mail-Adresse",
+          "password":        "Passwort",
+          "poll_interval":   "Abrufintervall (Sekunden, min. 30)",
+          "mqtt_enabled":    "An MQTT veröffentlichen",
+          "influx_enabled":  "In InfluxDB schreiben",
+          "influx_host":     "InfluxDB Host",
+          "influx_port":     "InfluxDB Port",
+          "influx_db":       "Datenbank / Bucket",
+          "influx_token":    "InfluxDB Token (v2; leer für v1)",
+          "influx_org":      "InfluxDB Organisation (v2)",
+          "influx_username": "InfluxDB Benutzername (v1; optional)",
+          "influx_password": "InfluxDB Passwort (v1; optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth":   "Ungültige Anmeldedaten",
+      "cannot_connect": "Verbindung zu Fresh-r nicht möglich",
+      "no_devices":     "Keine Fresh-r Geräte für dieses Konto gefunden",
+      "unknown":        "Unbekannter Fehler"
+    },
+    "abort": {
+      "already_configured": "Fresh-r ist bereits für dieses Konto konfiguriert"
+    }
+  }
+}
