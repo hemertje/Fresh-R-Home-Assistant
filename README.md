@@ -151,18 +151,18 @@ fresh-r-home-assistant/
 
 ### 0 — Download
 
-Download `fresh_r.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it. This creates a `fresh-r/` folder containing Home Assistant files, and a `grafana/` folder with the dashboard.
+Download `fresh_r_v2.0.5.6_complete.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
 
 ### 1 — Copy the custom component
 
 ```bash
-cp -r fresh-r/custom_components/fresh_r  <HA-config>/custom_components/
+cp -r custom_components/fresh_r  <HA-config>/custom_components/
 ```
 
 ### 2 — Install the Lovelace card
 
 ```bash
-cp -r fresh-r/www/fresh-r-card.js  <HA-config>/www/
+cp www/fresh-r-card.js  <HA-config>/www/
 ```
 
 Add the resource via **Settings → Dashboards → Resources → Add resource**:
@@ -210,11 +210,11 @@ The device serial number is **discovered automatically** — you never need to e
 1. Create a new dashboard: Settings → Dashboards → Add Dashboard
 2. Click the three dots menu → Edit dashboard
 3. Click three dots again → Raw configuration editor
-4. Paste the contents from the `fresh-r/www/fresh-r-dashboard.yaml` file
+4. Paste the contents from the `www/fresh-r-dashboard.yaml` file
 
 **Grafana**
 1. Dashboards → Import → Upload JSON file
-2. Select `grafana/fresh_r_dashboard.json` (from the extracted ZIP root)
+2. Select `grafana/fresh_r_dashboard.json` (from the extracted ZIP)
 3. Choose your InfluxDB datasource
 
 ---
