@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -22,6 +23,9 @@ PLATFORMS = ["sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Register custom icons
+    await _async_register_icons(hass)
+    
     data    = entry.data
     session = async_get_clientsession(hass)
 
@@ -102,3 +106,29 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception:  # noqa: BLE001
                 pass
     return ok
+
+
+async def _async_register_icons(hass: HomeAssistant) -> None:
+    """Register custom Fresh-R icons."""
+    try:
+        # Get the path to the icons directory
+        integration_path = os.path.dirname(__file__)
+        icons_path = os.path.join(integration_path, "icons")
+        
+        # Register the fresh-r icon
+        if os.path.exists(os.path.join(icons_path, "fresh-r.svg")):
+            hass.components.frontend.async_register_icon(
+                "fresh-r", 
+                f"/local/custom_components/fresh_r/icons/fresh-r.svg"
+            )
+            _LOGGER.debug("Fresh-R icon registered")
+        
+        if os.path.exists(os.path.join(icons_path, "fresh-r-simple.svg")):
+            hass.components.frontend.async_register_icon(
+                "fresh-r-simple", 
+                f"/local/custom_components/fresh_r/icons/fresh-r-simple.svg"
+            )
+            _LOGGER.debug("Fresh-R simple icon registered")
+            
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Could not register Fresh-R icons: %s", err)
