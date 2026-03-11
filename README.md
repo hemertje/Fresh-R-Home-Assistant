@@ -153,20 +153,24 @@ Fresh-R-Home-Assistant/
 
 ### 0 — Download
 
-Download `fresh_r_v2.0.6.5_multi_language_complete.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
+Download `fresh_r_v2.0.6.6_split_app_docs.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
 
-**Multi-Language Support:** 🇳🇱 NL 🇬🇧 EN 🇩🇪 DE 🇫🇷 FR
+**Perfect Split Structure:** 📱 HA App | 📚 Documentatie
+
+**🎯 For End Users:** Use `Fresh_R_Home_Assistant_App/` folder only!
+**📚 For Documentation:** See `Documentatie_en_Divers/` folder!
 
 ### 1 — Copy the custom component
 
 ```bash
-cp -r Home_Assistant_Installation/custom_components/fresh_r  <HA-config>/custom_components/
+cp -r Fresh_R_Home_Assistant_App/custom_components/fresh_r  <HA-config>/custom_components/
 ```
 
 ### 2 — Install the Lovelace card
 
 ```bash
-cp Home_Assistant_Installation/www/fresh-r-card.js  <HA-config>/www/
+cp Fresh_R_Home_Assistant_App/www/fresh-r-card.js  <HA-config>/www/
+cp Fresh_R_Home_Assistant_App/www/fresh-r-dashboard.yaml  <HA-config>/www/
 ```
 
 Add the resource via **Settings → Dashboards → Resources → Add resource**:

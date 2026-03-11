@@ -85,4 +85,4 @@ jobs:
         draft: false
         prerelease: false
         files: |
-          fresh_r_v2.0.6.5_multi_language_complete.zip
+          fresh_r_v2.0.6.6_split_app_docs.zip
