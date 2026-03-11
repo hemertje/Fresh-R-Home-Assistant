@@ -153,7 +153,9 @@ Fresh-R-Home-Assistant/
 
 ### 0 — Download
 
-Download `fresh_r_v2.0.6.4_complete_ha_friendly.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
+Download `fresh_r_v2.0.6.5_multi_language_complete.zip` from the [latest release](https://github.com/hemertje/Fresh-R-Home-Assistant/releases/latest) and extract it.
+
+**Multi-Language Support:** 🇳🇱 NL 🇬🇧 EN 🇩🇪 DE 🇫🇷 FR
 
 ### 1 — Copy the custom component
 
