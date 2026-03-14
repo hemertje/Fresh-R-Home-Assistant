@@ -1,0 +1,540 @@
+function createLinSvg(settings, targetElement, onReportPage) {
+
+    if(onReportPage) {
+        var viewboxY = '-80';
+        var viewboxY2 = '260';
+        var viewboxX2 = '1720';
+        var Backgroundcolor = "none";
+        //if(settings.chartContent[0].data=="avg")var viewboxY = '40';
+    } else {
+        var viewboxY = '-90';
+        var viewboxY2 = settings.viewboxY2[0].value;
+        var viewboxX2 = settings.viewboxY2[0].value2;
+        var Backgroundcolor = "none";
+        //var viewboxY = '600';
+    }
+
+    var svg = d3.select(targetElement)
+   .classed("svg-container", true) //container class to make it responsive
+   .append("svg")
+   //responsive SVG needs these 2 attributes and no width and height attr
+   .attr("preserveAspectRatio", "xMinYMin meet")
+   .attr("style", "background-color: "+Backgroundcolor+";width: 100%;height: 100%;")
+   .attr("viewBox", "-120 "+viewboxY+" "+viewboxX2+" "+viewboxY2+"")
+   //class to make it responsive
+   .classed("svg-content-responsive", true); 
+
+   var polar = $('.svg-container');
+   $(targetElement).children().attr("width", polar.width()).attr("height", polar.height())
+
+    return svg;
+}
+
+
+
+function updateLinGradient(svg, id, colorStart, colorEnd) {
+
+    var thermalGradient = svg.append("linearGradient")
+    .attr("y1", 0)
+    .attr("y2", general.linearMaxY)
+    .attr("x1", "0")
+    .attr("x2", "0")
+    .attr("id", id)
+    .attr("gradientUnits", "userSpaceOnUse");
+
+    thermalGradient.append("stop")
+    .attr("offset", "0")
+    .attr("stop-color", colorStart);
+
+    thermalGradient.append("stop")
+    .attr("offset", "1")
+    .attr("stop-color", colorEnd);
+}
+
+function timeSnap(t, interval, minTimeValue) {
+    return new Date(Math.round((t - minTimeValue) / interval) * interval + minTimeValue);
+}
+function genLinearData(settings, data, minTime) {
+
+    var linearData = d3.nest()
+    .key(function(d) { return timeSnap(d.time, general.linearInterval, minTime.valueOf()) })
+    .rollup(function(a) {
+
+        var twentyMinData = {
+            "time": timeSnap(a[0].time, general.linearInterval, minTime.valueOf())
+        };
+
+        for(var i = 0; i < settings.chartContent.length; i++) {
+
+            if(settings.chartContent[i].defaultValue == null) {
+                
+                var count = 0;
+                var sum = 0;
+            
+                a.forEach(function(measurement) {
+
+                    if(measurement[settings.chartContent[i].data] != -10000) {
+                        count++;
+                        sum += measurement[settings.chartContent[i].data];
+                    }
+                });
+
+                if(count > 0) {
+                    twentyMinData[settings.chartContent[i].data] = (sum / count).toFixed(settings.precision);
+                } else {
+                    twentyMinData[settings.chartContent[i].data] = -10000;
+                }
+
+            } else {
+
+                twentyMinData[settings.chartContent[i].data] = settings.chartContent[i].defaultValue;
+            }            
+        }
+
+        return twentyMinData;
+        
+    }).entries(data);
+
+    return linearData;
+}
+
+
+
+function determineLinDomain(settings, linearData) {
+
+    var min = 0;
+    var max = 0;
+
+    if(settings.dynamicDomain) {
+
+        var min;
+        var max;
+
+        for(var i = 0; i < settings.chartContent.length; i++) {
+            min = d3.min(linearData, function(d) {
+                if(d.value[settings.chartContent[i].data] != -10000) {
+                    var currentMin = Math.min(d.value[settings.chartContent[i].data]);
+                    return Math.min(currentMin, min);
+                }
+            });
+
+            max = d3.max(linearData, function(d) {
+                var currentMax = Math.max(d.value[settings.chartContent[i].data]);
+                return Math.max(currentMax, max);
+            });
+        }
+
+        return {min, max}
+    } 
+    
+    min = settings.domainMin;
+    max = settings.domainMax;
+
+    return { min, max}
+}
+
+function determineLinScale(settings, domain, minTime, maxTime) {
+
+    
+    var xScale = d3.scaleTime()
+    .domain([minTime, maxTime])
+    .range([0, settings.linearWidth]);
+
+    var yScale = d3.scaleLinear()
+        .domain([domain.max, domain.min])
+        .range([0, settings.linearMaxY]);
+
+    return {xScale, yScale};
+}
+
+/**
+ * Chart name label and total label
+ */
+function appendTopLabels(settings, chartSelection, dataTotals, onReportPage) {
+
+    if(onReportPage){
+        $(chartSelection._groups[0][0].parentNode.parentNode).find('#report_label').empty().append(settings.labelLeft).css('color', settings.chartContent[0].tipColor);
+        if(general.page == "fresh-r"){
+            $(chartSelection._groups[0][0].parentNode.parentNode).find('#report_value').empty().append(dataTotals[settings.dataTotal].toFixed(1) + " " + settings.labelRight).css('color', settings.chartContent[0].tipColor);
+        }else{
+            $(chartSelection._groups[0][0].parentNode.parentNode).find('#report_value').empty().append(settings.labelRight).css('color', settings.chartContent[0].tipColor);
+        }
+    }
+    else{
+        chartSelection.append("g")
+        .append("text")
+        .attr("class", "label chart-text")
+        .attr("x", 0)
+        .attr("y", -80)
+        .attr("dy", 30)
+        .text(settings.labelLeft)
+        .attr("fill", settings.chartContent.tipColor);
+        
+        
+        if(settings.info == true){
+            chartSelection.append("g")
+            .append("text")
+            .attr("class", "opener label chart-text chart-total-text")
+            .attr("y", -50)
+            .attr("x", -100)
+            .html('<a class="info">&#9432;</a>');     
+        }else{
+            chartSelection.append("g")
+            .append("text")
+            .attr("class", "opener label chart-text chart-total-text")
+            .attr("y", -50)
+            .attr("x", -100);  
+        }
+        
+
+        
+        // if(settings.dataTotal != null) {
+            
+        //     if(settings.dataTotalTwo == null && settings.dataTotalThree==null) {
+
+        //         chartSelection.append("g")
+        //         .append("text")
+        //         .attr("class", "label chart-text chart-total-text")
+        //         .attr("x", 1550)
+        //         .attr("y", -80)
+        //         .attr("dy", 30)
+        //         .attr("text-anchor", "end")
+        //         .text(dataTotals[settings.dataTotal] + " " + settings.labelRight);
+        
+        //     } else if(settings.dataTotalThree==null) {
+        //         chartSelection.append("g")
+        //         .append("text")
+        //         .attr("class", "label chart-text chart-total-text")
+        //         .attr("x", 1550)
+        //         .attr("y", -80)
+        //         .attr("dy", 30)
+        //         .attr("text-anchor", "end")
+        //         .text(dataTotals[settings.dataTotal] + settings.labelRight + dataTotals[settings.dataTotalTwo] + settings.labelRightTwo);
+        //     }
+        //     else{
+        //         chartSelection.append("g")
+        //         .append("text")
+        //         .attr("class", "label chart-text chart-total-text")
+        //         .attr("x", 1350)
+        //         .attr("y", -80)
+        //         .attr("dy", 30)
+        //         .attr("text-anchor", "end")
+        //         .text(dataTotals[settings.dataTotal] + settings.labelRight);
+
+        //         chartSelection.append("g")
+        //         .append("text")
+        //         .attr("class", "label chart-text chart-total-text")
+        //         .attr("x", 1350)
+        //         .attr("y", -60)
+        //         .attr("dy", 30)
+        //         .attr("text-anchor", "end")
+        //         .text(dataTotals[settings.dataTotalTwo] + settings.labelRightTwo);
+
+        //         chartSelection.append("g")
+        //         .append("text")
+        //         .attr("class", "label chart-text chart-total-text")
+        //         .attr("x", 1350)
+        //         .attr("y", -40)
+        //         .attr("dy", 30)
+        //         .attr("text-anchor", "end")
+        //         .text(dataTotals[settings.dataTotalThree] + settings.labelRightThree);
+        //     }
+        // }  
+    }
+    
+}
+
+function yAxis(settings, chartSelection, Yscale, suffix) {
+
+    chartSelection.append("g")
+    .classed('y axis', true)
+    .call(d3.axisLeft(Yscale).ticks(5).tickFormat(function(d) { return d + suffix; }))
+    .append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 6)
+    .attr("dy", "-2.5em")
+    .attr("class", "chart-text")
+    .attr("text-anchor", "end")
+    .text(settings.vertLabel);
+}
+
+function xAxis(settings, chartSelection, Xscale, onReportPage) {
+
+    if(onReportPage) {
+        var axis = d3.axisBottom(Xscale).ticks(8);
+
+        chartSelection.append("g")
+        .attr('transform', 'translate(0,' + settings.linearMaxY + ')')
+        .classed('x axis', true)
+        .call(axis)
+        .append("text")
+        .attr("class", "tick")
+        .attr("x", settings.linearWidth)
+        .attr("y", "1em")
+        .attr("style", "text-anchor: end;");
+
+    } else {
+        
+        var axis = d3.axisBottom(Xscale).ticks(d3.timeHour.every(6)).tickFormat(d3.timeFormat('%H'));
+    
+        chartSelection.append("g")
+        .attr('transform', 'translate(0,' + settings.linearMaxY + ')')
+        .classed('x axis', true)
+        .call(axis)
+        .append("text")
+        .attr("class", "tick")
+        .attr("x", settings.linearWidth)
+        .attr("y", "1em")
+        .attr("style", "text-anchor: end;")
+        .text("24");  
+    }
+}
+
+function linPath(xScale, yScale, pathName) {
+
+    var path = d3.line()
+        .defined(function(d) { 
+            return (d.value[pathName] != -10000) ? true : false; 
+        })
+        .x(function(d) { return xScale(d.value.time); })
+        .y(function(d) { return yScale(d.value[pathName]); })
+        .curve(d3.curveMonotoneX);
+
+    return path;
+}
+
+function linArea(settings, yScale, domain, path, pathTwo) {
+    if(settings.twoPaths) {
+
+        if(settings.attachAreaToSecondPath) {
+            var area = d3.area()
+            .defined(path.defined())
+            .x0(path.x())
+            .x1(pathTwo.x())
+            .y1(path.y())
+            .y0(pathTwo.y())
+            .curve(d3.curveMonotoneX);
+            return area;
+        } 
+    }
+
+    var area = d3.area()
+    .defined(path.defined())
+    .x(path.x())
+    .y1(path.y())
+    .y0(yScale(domain.min))
+    .curve(d3.curveMonotoneX);
+
+    return area;
+}
+
+
+
+/**
+ * Create tooltip elements
+ */
+function drawLinearHighlights(settings, chartSelection, data, scale, onReportPage, pathName, pathNameTwo) {
+    var chartWidth = chartSelection.node().getBBox()["width"];
+    var highlightWidth = chartWidth / data.length;
+    
+    var highlights = chartSelection.selectAll(".highlight")
+    .data(data)
+    .enter().append("g")
+    .attr("class", "highlight");
+
+    for(var i = 0; i < settings.chartContent.length; i++) {
+        if(settings.chartContent[i].tipColor !== undefined) {
+            highlights.append("circle")
+            .attr("class", "highlight-surface")
+            .attr("data-html2canvas-ignore",true)
+            .attr("r", "10")
+            .attr("fill", settings.chartContent[i].tipColor)
+            .attr("cx", function(d) { return scale.xScale(d.value.time); })
+            .attr("cy", function(d) { return scale.yScale(d.value[settings.chartContent[i].data]); })
+        }
+
+        if(settings.chartContent[i].tipText !== undefined) {
+
+            highlights.append("text")
+            .attr("class", "tip")
+            .attr("data-html2canvas-ignore",true)
+            .attr("fill", "grey")
+            .text(function(d) { return d.value[settings.chartContent[i].data] + settings.chartContent[i].tipText})
+            .attr("x", function(d) {
+
+                return scale.xScale(d.value.time) + 30;
+            })
+            .attr("style","text-anchor: start;")
+            .attr("y", function(d) {
+                return scale.yScale(d.value[settings.chartContent[i].data]) - 30;
+            });
+        }
+    }
+
+    highlights.append("text")
+    .attr("class", "tip tip-time")
+    .attr("data-html2canvas-ignore",true)
+    .text(function(d) { 
+        
+        if(onReportPage) {
+            return general.formatDate(d.value.time);
+        }
+
+        return general.formatTime(d.value.time);
+    })
+    .attr("x", function(d, i) { return scale.xScale(d.value.time); })
+    .attr("y", settings.linearMaxY + 55);
+
+    //console.log(highlightWidth);
+
+    // highlights.append("rect")
+    // .attr("x", function(d) { return scale.xScale(d.value.time) - (highlightWidth/2); })
+    // .attr("class", "highlight-surface")
+    // .attr("y", 0)
+    // .attr("width", highlightWidth)
+    // .attr("height", settings.linearMaxY);
+}
+
+function createLinearChart(data, settings, targetElement, onReportPage) {
+
+    try {
+        if(onReportPage)var dataTotals = data["data-totals"].total;
+         else var dataTotals = data["data-totals"][0];
+    } catch (error) {
+        
+        var dataTotals = {
+            CO2Removed:0,
+            loss:0,
+            mv75Loss:0,
+            totalFlow:0
+        }
+        
+    }
+    
+    if(general.page == "fresh-r") {
+        data = data["chart-data"];
+    }
+   
+    if(onReportPage) {
+        var minTime = new Date(data[0].time);
+        minTime.setHours(0,0,0,0);
+
+        var maxTime = new Date(data[data.length - 1].time);
+
+    } else {
+        if(general.page == "forward" || general.page == "monitor") {
+            data = data["chart-data"];
+        }
+
+        var minTime = new Date(data[0].date);
+        minTime.setHours(0,0,0,0);
+
+        var maxTime = new Date(data[0].date);
+        maxTime.setHours(23,59,59,999);
+    }
+    console.log("minTime",minTime);
+    console.log("maxTime",maxTime);
+
+    var svg = createLinSvg(settings, targetElement, onReportPage);
+
+    svg.selectAll("path, area, g").remove();
+
+    var linearData = genLinearData(settings, data, minTime);
+   
+    var domain = determineLinDomain(settings, linearData);
+
+    var scale = determineLinScale(settings, domain, minTime, maxTime);
+
+    svg.datum(linearData);
+
+    var content = {}
+    var cnt = 0;
+    for(var i = 0; i < settings.chartContent.length; i++) {
+
+        content[settings.chartContent[i].data + "_line"] = linPath(scale.xScale, scale.yScale, settings.chartContent[i].data)
+        
+        if(settings.chartContent[i].type == "line") {
+
+            if(settings.chartContent[i].striped) {
+
+                svg.append("path")
+                .attr("class", "line path-one")
+                .attr("d", content[settings.chartContent[i].data + "_line"])
+                .attr("fill", "transparent")
+                .attr("stroke", settings.chartContent[i].strokeColor)
+                .style("stroke-width", settings.chartContent[i].strokeWidth)
+                .style("stroke-dasharray", ("5, 5"));
+    
+            } else {
+                
+                svg.append("path")
+                .attr("class", "line path-one")
+                .attr("d", content[settings.chartContent[i].data + "_line"])
+                .attr("fill", "transparent")
+                .attr("stroke", settings.chartContent[i].strokeColor)
+                .style("stroke-width", settings.chartContent[i].strokeWidth);
+            }
+        } else {
+
+            if(settings.chartContent[i].attachTo == null) {
+                var area = linArea(settings, scale.yScale, domain, content[settings.chartContent[i].data + "_line"]);
+            } else {
+                var attachIndex = settings.chartContent.findIndex(content => content.data == settings.chartContent[i].attachTo);
+                var area = linArea(settings, scale.yScale, domain, content[settings.chartContent[i].data + "_line"], content[settings.chartContent[attachIndex].data + "_line"]);
+            }
+
+            svg.append("path")
+            .attr("class", "area")
+            .attr("id","area_"+i)
+            .attr("style", "fill: " + settings.chartContent[i].areaColor)
+            .attr("d", area);
+
+        } 
+    }
+    
+    appendTopLabels(settings, svg, dataTotals, onReportPage);
+
+    yAxis(settings, svg, scale.yScale, "");
+    xAxis(settings, svg, scale.xScale, onReportPage);
+    drawLinearHighlights(settings, svg, linearData, scale, onReportPage, "lin", "linTwo");
+    
+
+}
+
+
+
+function attachLinearEventListeners() {
+
+    //tooltip event listeners
+    $(".linear-chart").unbind("touchmove");
+
+    $(".highlight-surface, .tip-time").unbind("mouseenter");
+    $(".highlight-surface, .tip-time").on("mouseenter", function() {
+        $(this).parent().addClass("active");
+    });
+    $(".highlight-surface, .tip-time").unbind("mouseleave");
+    $(".highlight-surface, .tip-time").on("mouseleave", function() {
+        $(this).parent().removeClass("active");
+    });
+    
+    //tooltip event listeners for touchscreeen
+
+    $(".linear-chart").unbind("touchmove");
+    $(".linear-chart").on("touchmove", function (event) {
+        
+        event.preventDefault();
+
+        var touch = event.originalEvent.touches[0] || event.originalEvent.changedTouches[0];
+        var elem = document.elementFromPoint(touch.clientX, touch.clientY);
+        $('svg, .highlight').removeClass('active');
+        $(elem).parent().addClass("active");
+    });
+    
+    $(".linear-chart").unbind("touchend");
+    $(".linear-chart").on("touchend", function(event) {
+
+        event.preventDefault();
+
+        $('svg, .highlight').removeClass('active');
+    });
+}

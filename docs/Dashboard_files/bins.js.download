@@ -1,0 +1,1013 @@
+function draw_bins(data2) {
+
+    var co2_400_600_bin = 0;
+    var co2_600_800_bin = 0;
+    var co2_800_1000_bin = 0;
+    var co2_1000_1200_bin = 0;
+    var co2_1200_and_higher_bin = 0;
+
+    var hum_0_20_bin = 0;
+    var hum_20_40_bin = 0;
+    var hum_40_60_bin = 0;
+    var hum_60_80_bin = 0;
+    var hum_80_and_higher_bin = 0;
+
+    var rdp_0_20_bin = 0;
+    var rdp_20_40_bin = 0;
+    var rdp_40_60_bin = 0;
+    var rdp_60_80_bin = 0;
+    var rdp_80_and_higher_bin = 0;
+
+    var t1_minus_15_bin = 0;
+    var t1_15_18_bin = 0;
+    var t1_19_22_bin = 0;
+    var t1_23_25_bin = 0;
+    var t1_25_and_higher_bin = 0;
+
+
+
+    var t2_minus_10_0_bin = 0;
+    var t2_0_10_bin_ = 0;
+    var t2_10_20_bin = 0;
+    var t2_20_30_bin = 0;
+    var t2_30_and_higher = 0;
+
+
+
+    var dp_minus_10_0_bin = 0;
+    var dp_0_10_bin = 0;
+    var dp_10_20_bin = 0;
+    var dp_20_30_bin = 0;
+    var dp_30_and_higher_bin = 0;
+
+
+
+    var flow_0_25_bin = 0;
+    var flow_50_bin = 0;
+    var flow_50_75_bin = 0;
+    var flow_75_100_bin = 0;
+    var flow_100_and_higher_bin = 0;
+
+
+
+    var d1_0_25_bin = 0;
+    var d1_25_50_bin = 0;
+    var d1_50_75_bin = 0;
+    var d1_75_100_bin = 0;
+    var d1_100_and_higher = 0;
+    var d1_filter = false;
+
+
+
+    var d4_0_25_bin = 0;
+    var d4_25_50_bin = 0;
+    var d4_50_75_bin = 0;
+    var d4_75_100_bin = 0;
+    var d4_100_and_higher_bin = 0;
+    var d4_filter = false;
+
+
+
+    var d5_0_25_bin = 0;
+    var d5_25_50_bin = 0;
+    var d5_50_75_bin = 0;
+    var d5_75_100_bin = 0;
+    var d5_100_and_higher_bin = 0;
+    var d5_filter = false;
+
+
+
+
+    for (let i = 0; i < data2.length; i++) { // days
+        for (let j = 0; j < data2[i].length; j++) { // 10-minute intervals
+            rdp = calculate_rdp(data2[i][j].dp, data2[i][j].t1, data2[i][j].t2);
+
+            if (data2[i][j].co2 > 400 && data2[i][j].co2 < 600 || data2[i][j].co2 == 400 || data2[i][j].co2 == 600) {
+                co2_400_600_bin++;
+            }
+            if (data2[i][j].co2 > 600 && data2[i][j].co2 < 800 || data2[i][j].co2 == 800) {
+                co2_600_800_bin++;
+            }
+            if (data2[i][j].co2 > 800 && data2[i][j].co2 < 1000 || data2[i][j].co2 == 1000) {
+                co2_800_1000_bin++;
+            }
+            if (data2[i][j].co2 > 999 && data2[i][j].co2 < 1200 || data2[i][j].co2 == 1200) {
+                co2_1000_1200_bin++;
+            } else if (data2[i][j].co2 > 1200) {
+                co2_1200_and_higher_bin++;
+            }
+
+            if (data2[i][j].hum <20 || data2[i][j].hum == 20) {
+                hum_0_20_bin++;
+            }
+            if (data2[i][j].hum > 20 && data2[i][j].hum < 30 || data2[i][j].hum == 30) {
+                hum_20_40_bin++;
+            }
+            if (data2[i][j].hum > 30 && data2[i][j].hum < 50 || data2[i][j].hum == 50) {
+                hum_40_60_bin++;
+            }
+            if (data2[i][j].hum > 50 && data2[i][j].hum < 70 || data2[i][j].hum == 70) {
+                hum_60_80_bin++;
+            } else if (data2[i][j].hum > 70) {
+                hum_80_and_higher_bin++;
+            }
+
+            if (rdp <=20) {
+                rdp_0_20_bin++;
+            }
+            if (rdp > 20 && rdp <= 40) {
+                rdp_20_40_bin++;
+            }
+            if (rdp > 40 && rdp <= 60) {
+                rdp_40_60_bin++;
+            }
+            if (rdp > 60 && rdp <= 80) {
+                rdp_60_80_bin++;
+            } else if (rdp > 80) {
+                rdp_80_and_higher_bin++;
+            }
+
+            if (data2[i][j].t1 < 16 || data2[i][j].t1 == 16) {
+                t1_minus_15_bin++;
+            }
+            if (data2[i][j].t1 > 16 && data2[i][j].t1 < 18 || data2[i][j].t1 == 18) {
+                t1_15_18_bin++;
+            }
+            if (data2[i][j].t1 > 19 && data2[i][j].t1 < 21 || data2[i][j].t1 == 21) {
+                t1_19_22_bin++;
+            }
+            if (data2[i][j].t1 > 22 && data2[i][j].t1 < 25 || data2[i][j].t1 == 25) {
+                t1_23_25_bin++;
+            } else if (data2[i][j].t1 > 26) {
+                t1_25_and_higher_bin++;
+            }
+
+            if (data2[i][j].t2 < 0 || data2[i][j].t2 == 0) {
+                t2_minus_10_0_bin++;
+            }
+            if (data2[i][j].t2 > 0 && data2[i][j].t2 <= 10) {
+                t2_0_10_bin_++;
+            }
+            if (data2[i][j].t2 > 10 && data2[i][j].t2 <= 17) {
+                t2_10_20_bin++;
+            }
+            if (data2[i][j].t2 > 17 && data2[i][j].t2 <= 24) {
+                t2_20_30_bin++;
+            } else if (data2[i][j].t2 > 24) {
+                t2_30_and_higher++;
+            }
+
+            if (data2[i][j].d1_25 > 0) d1_filter = true;
+            if (data2[i][j].d1_25 > 0 && data2[i][j].d1_25 < 25 || data2[i][j].d1_25 == 0 || data2[i][j].d1_25 == 25) {
+                d1_0_25_bin++;
+            }
+            if (data2[i][j].d1_25 > 25 && data2[i][j].d1_25 < 50 || data2[i][j].d1_25 == 50) {
+                d1_25_50_bin++;
+            }
+            if (data2[i][j].d1_25 > 50 && data2[i][j].d1_25 < 75 || data2[i][j].d1_25 == 75) {
+                d1_50_75_bin++;
+            }
+            if (data2[i][j].d1_25 > 75 && data2[i][j].d1_25 < 100 || data2[i][j].d1_25 == 100) {
+                d1_75_100_bin++;
+            } else if (data2[i][j].d1_25 > 100) {
+                d1_100_and_higher++;
+            }
+
+            if (data2[i][j].d4_25 > 0) d4_filter = true;
+            if (data2[i][j].d4_25 > 0 && data2[i][j].d4_25 < 25 || data2[i][j].d4_25 == 0 || data2[i][j].d4_25 == 25) {
+                d4_0_25_bin++;
+            }
+            if (data2[i][j].d4_25 > 25 && data2[i][j].d4_25 < 50 || data2[i][j].d4_25 == 50) {
+                d4_25_50_bin++;
+            }
+            if (data2[i][j].d4_25 > 50 && data2[i][j].d4_25 < 75 || data2[i][j].d4_25 == 75) {
+                d4_50_75_bin++;
+            }
+            if (data2[i][j].d4_25 > 75 && data2[i][j].d4_25 < 100 || data2[i][j].d4_25 == 100) {
+                d4_75_100_bin++;
+            } else if (data2[i][j].d4_25 > 100) {
+                d4_100_and_higher_bin++;
+            }
+
+            if (data2[i][j].dp < 0 || data2[i][j].dp == 0) {
+                dp_minus_10_0_bin++;
+            }
+            if (data2[i][j].dp > 0 && data2[i][j].dp < 4 || data2[i][j].dp == 4) {
+                dp_0_10_bin++;
+            }
+            if (data2[i][j].dp > 4 && data2[i][j].dp < 8 || data2[i][j].dp == 8) {
+                dp_10_20_bin++;
+            }
+            if (data2[i][j].dp > 8 && data2[i][j].dp < 12 || data2[i][j].dp == 12) {
+                dp_20_30_bin++;
+            } else if (data2[i][j].dp > 12) {
+                dp_30_and_higher_bin++;
+            }
+            if (data2[i][j].d5_25 > 0) d5_filter = true;
+            if (data2[i][j].d5_25 > 0 && data2[i][j].d5_25 < 25 || data2[i][j].d5_25 == 0 || data2[i][j].d5_25 == 25) {
+                d5_0_25_bin++;
+            }
+            if (data2[i][j].d5_25 > 25 && data2[i][j].d5_25 < 50 || data2[i][j].d5_25 == 50) {
+                d5_25_50_bin++;
+            }
+            if (data2[i][j].d5_25 > 50 && data2[i][j].d5_25 < 75 || data2[i][j].d5_25 == 75) {
+                d5_50_75_bin++;
+            }
+            if (data2[i][j].d5_25 > 75 && data2[i][j].d5_25 < 100 || data2[i][j].d5_25 == 100) {
+                d5_75_100_bin++;
+            } else if (data2[i][j].d5_25 > 100) {
+                d5_100_and_higher_bin++;
+            }
+
+            if(data2[i][j].flow >400)data2[i][j].flow = +data2[i][j].flow *0.03;
+
+            if (data2[i][j].flow < 25 || data2[i][j].flow == 25 ) {
+                flow_0_25_bin++;
+            }
+            if (data2[i][j].flow > 25 && data2[i][j].flow < 40 || data2[i][j].flow == 40) {
+                flow_50_bin++;
+            }
+            if (data2[i][j].flow > 40 && data2[i][j].flow < 55 || data2[i][j].flow == 55) {
+                flow_50_75_bin++;
+            }
+            if (data2[i][j].flow > 55 && data2[i][j].flow < 75 || data2[i][j].flow == 75) {
+                flow_75_100_bin++;
+            } else if (data2[i][j].flow > 75) {
+                flow_100_and_higher_bin++;
+            }
+
+        };
+    }
+
+    var size = 0; //size = array length
+    for (let i = 0; i < data2.length; i++) { // i loop_dates over days
+        var size = size + data2[i].length;
+        Object.values(data2[i]).forEach(val => {
+
+
+
+        });
+    }
+
+
+
+    co2_400_600_bin = Math.round(100 / size * co2_400_600_bin);
+    co2_600_800_bin = Math.round(100 / size * co2_600_800_bin);
+    co2_800_1000_bin = Math.round(100 / size * co2_800_1000_bin);
+    co2_1000_1200_bin = Math.round(100 / size * co2_1000_1200_bin);
+    co2_1200_and_higher_bin = Math.round(100 / size * co2_1200_and_higher_bin);
+
+
+
+    hum_0_20_bin = Math.round(100 / size * hum_0_20_bin)
+    hum_20_40_bin = Math.round(100 / size * hum_20_40_bin)
+    hum_40_60_bin = Math.round(100 / size * hum_40_60_bin)
+    hum_60_80_bin = Math.round(100 / size * hum_60_80_bin)
+    hum_80_and_higher_bin = Math.round(100 / size * hum_80_and_higher_bin)
+
+    rdp_0_20_bin = Math.round(100 / size * rdp_0_20_bin)
+    rdp_20_40_bin = Math.round(100 / size * rdp_20_40_bin)
+    rdp_40_60_bin = Math.round(100 / size * rdp_40_60_bin)
+    rdp_60_80_bin = Math.round(100 / size * rdp_60_80_bin)
+    rdp_80_and_higher_bin = Math.round(100 / size * rdp_80_and_higher_bin)
+
+
+
+    t1_minus_15_bin = Math.round(100 / size * t1_minus_15_bin)
+    t1_15_18_bin = Math.round(100 / size * t1_15_18_bin)
+    t1_19_22_bin = Math.round(100 / size * t1_19_22_bin)
+    t1_23_25_bin = Math.round(100 / size * t1_23_25_bin)
+    t1_25_and_higher_bin = Math.round(100 / size * t1_25_and_higher_bin)
+
+
+
+    t2_minus_10_0_bin = Math.round(100 / size * t2_minus_10_0_bin)
+    t2_0_10_bin_ = Math.round(100 / size * t2_0_10_bin_)
+    t2_10_20_bin = Math.round(100 / size * t2_10_20_bin)
+    t2_20_30_bin = Math.round(100 / size * t2_20_30_bin)
+    t2_30_and_higher = Math.round(100 / size * t2_30_and_higher)
+
+
+
+    dp_minus_10_0_bin = Math.round(100 / size * dp_minus_10_0_bin)
+    dp_0_10_bin = Math.round(100 / size * dp_0_10_bin)
+    dp_10_20_bin = Math.round(100 / size * dp_10_20_bin)
+    dp_20_30_bin = Math.round(100 / size * dp_20_30_bin)
+    dp_30_and_higher_bin = Math.round(100 / size * dp_30_and_higher_bin)
+
+
+
+    d1_0_25_bin = Math.round(100 / size * d1_0_25_bin)
+    d1_25_50_bin = Math.round(100 / size * d1_25_50_bin)
+    d1_50_75_bin = Math.round(100 / size * d1_50_75_bin)
+    d1_75_100_bin = Math.round(100 / size * d1_75_100_bin)
+    d1_100_and_higher = Math.round(100 / size * d1_100_and_higher)
+
+
+
+    d4_0_25_bin = Math.round(100 / size * d4_0_25_bin)
+    d4_25_50_bin = Math.round(100 / size * d4_25_50_bin)
+    d4_50_75_bin = Math.round(100 / size * d4_50_75_bin)
+    d4_75_100_bin = Math.round(100 / size * d4_75_100_bin)
+    d4_100_and_higher_bin = Math.round(100 / size * d4_100_and_higher_bin)
+
+
+
+    d5_0_25_bin = Math.round(100 / size * d5_0_25_bin)
+    d5_25_50_bin = Math.round(100 / size * d5_25_50_bin)
+    d5_50_75_bin = Math.round(100 / size * d5_50_75_bin)
+    d5_75_100_bin = Math.round(100 / size * d5_75_100_bin)
+    d5_100_and_higher_bin = Math.round(100 / size * d5_100_and_higher_bin)
+
+
+
+    flow_0_25_bin = Math.round(100 / size * flow_0_25_bin)
+    flow_50_bin = Math.round(100 / size * flow_50_bin)
+    flow_50_75_bin = Math.round(100 / size * flow_50_75_bin)
+    flow_75_100_bin = Math.round(100 / size * flow_75_100_bin)
+    flow_100_and_higher_bin = Math.round(100 / size * flow_100_and_higher_bin)
+
+
+
+    $("#400").empty();
+    $("#600").empty();
+    $("#800").empty();
+    $("#1000").empty();
+    $("#1200").empty();
+
+
+
+    $("#0").empty();
+    $("#20").empty();
+    $("#40").empty();
+    $("#60").empty();
+    $("#80").empty();
+
+    $("#rdp0").empty();
+    $("#rdp20").empty();
+    $("#rdp40").empty();
+    $("#rdp60").empty();
+    $("#rdp80").empty();
+
+
+
+    $("#m20").empty();
+    $("#m10").empty();
+    $("#t0").empty();
+    $("#t10").empty();
+    $("#t20").empty();
+
+
+
+    $("#mm20").empty();
+    $("#mm10").empty();
+    $("#tt0").empty();
+    $("#tt10").empty();
+    $("#tt20").empty();
+
+
+
+    $("#mmm20").empty();
+    $("#mmm10").empty();
+    $("#ttt0").empty();
+    $("#ttt10").empty();
+    $("#ttt20").empty();
+
+
+
+    $("#d120").empty();
+    $("#d110").empty();
+    $("#d10").empty();
+    $("#dd110").empty();
+    $("#dd120").empty();
+
+
+
+    $("#d420").empty();
+    $("#d410").empty();
+    $("#d40").empty();
+    $("#d4110").empty();
+    $("#d4120").empty();
+
+
+
+    $("#d520").empty();
+    $("#d510").empty();
+    $("#d50").empty();
+    $("#d5110").empty();
+    $("#d5120").empty();
+
+
+
+    $("#d520").empty();
+    $("#d510").empty();
+    $("#d50").empty();
+    $("#d5110").empty();
+    $("#d5120").empty();
+
+
+
+    $("#flow20").empty();
+    $("#flow10").empty();
+    $("#flow0").empty();
+    $("#flow110").empty();
+    $("#flow120").empty();
+
+
+
+
+
+    if (co2_400_600_bin != 0) {
+        $("#400").append(co2_400_600_bin + "%");
+    }
+
+    if (co2_600_800_bin != 0) {
+        $("#600").append(co2_600_800_bin + "%");
+    }
+
+    if (co2_800_1000_bin != 0) {
+        $("#800").append(co2_800_1000_bin + "%");
+    }
+
+    if (co2_1000_1200_bin != 0) {
+        $("#1000").append(co2_1000_1200_bin + "%");
+    }
+
+    if (co2_1200_and_higher_bin != 0) {
+        $("#1200").append(co2_1200_and_higher_bin + "%");
+    }
+
+
+
+    if (hum_0_20_bin != 0) {
+        $("#0").append(hum_0_20_bin + "%");
+    }
+
+    if (hum_20_40_bin != 0) {
+        $("#20").append(hum_20_40_bin + "%");
+    }
+
+    if (hum_40_60_bin != 0) {
+        $("#40").append(hum_40_60_bin + "%");
+    }
+
+    if (hum_60_80_bin != 0) {
+        $("#60").append(hum_60_80_bin + "%");
+    }
+
+    if (hum_80_and_higher_bin != 0) {
+        $("#80").append(hum_80_and_higher_bin + "%");
+    }
+
+    if (rdp_0_20_bin != 0) {
+        $("#rdp0").append(rdp_0_20_bin + "%");
+    }
+
+    if (rdp_20_40_bin != 0) {
+        $("#rdp20").append(rdp_20_40_bin + "%");
+    }
+
+    if (rdp_40_60_bin != 0) {
+        $("#rdp40").append(rdp_40_60_bin + "%");
+    }
+
+    if (rdp_60_80_bin != 0) {
+        $("#rdp60").append(rdp_60_80_bin + "%");
+    }
+
+    if (rdp_80_and_higher_bin != 0) {
+        $("#rdp80").append(rdp_80_and_higher_bin + "%");
+    }
+
+    if (t1_minus_15_bin != 0) {
+        $("#m20").append(t1_minus_15_bin + "%");
+    }
+
+    if (t1_15_18_bin != 0) {
+        $("#m10").append(t1_15_18_bin + "%");
+    }
+
+    if (t1_19_22_bin != 0) {
+        $("#t0").append(t1_19_22_bin + "%");
+    }
+
+    if (t1_23_25_bin != 0) {
+        $("#t10").append(t1_23_25_bin + "%");
+    }
+
+    if (t1_25_and_higher_bin != 0) {
+        $("#t20").append(t1_25_and_higher_bin + "%");
+    }
+
+
+
+    if (t2_minus_10_0_bin != 0) {
+        $("#mm20").append(t2_minus_10_0_bin + "%");
+    }
+
+    if (t2_0_10_bin_ != 0) {
+        $("#mm10").append(t2_0_10_bin_ + "%");
+    }
+
+    if (t2_10_20_bin != 0) {
+        $("#tt0").append(t2_10_20_bin + "%");
+    }
+
+    if (t2_20_30_bin != 0) {
+        $("#tt10").append(t2_20_30_bin + "%");
+    }
+
+    if (t2_30_and_higher != 0) {
+        $("#tt20").append(t2_30_and_higher + "%");
+    }
+
+
+
+    if (dp_minus_10_0_bin != 0) {
+        $("#mmm20").append(dp_minus_10_0_bin + "%");
+    }
+
+    if (dp_0_10_bin != 0) {
+        $("#mmm10").append(dp_0_10_bin + "%");
+    }
+
+    if (dp_10_20_bin != 0) {
+        $("#ttt0").append(dp_10_20_bin + "%");
+    }
+
+    if (dp_20_30_bin != 0) {
+        $("#ttt10").append(dp_20_30_bin + "%");
+    }
+
+    if (dp_30_and_higher_bin != 0) {
+        $("#ttt20").append(dp_30_and_higher_bin + "%");
+    }
+
+
+    console.log('d1 filter', d1_filter);
+    if (d1_filter) {
+        if (d1_0_25_bin != 0) {
+            $("#d120").append(d1_0_25_bin + "%");
+        }
+        if (d1_25_50_bin != 0) {
+            $("#d110").append(d1_25_50_bin + "%");
+        }
+    
+        if (d1_50_75_bin != 0) {
+            $("#d10").append(d1_50_75_bin + "%");
+        }
+    
+        if (d1_75_100_bin != 0) {
+            $("#dd110").append(d1_75_100_bin + "%");
+        }
+    
+        if (d1_100_and_higher != 0) {
+            $("#dd120").append(d1_100_and_higher + "%");
+        }
+    }
+    else{
+        $("#d1").remove();
+    }
+
+    
+
+
+
+    if (d4_filter) {
+        if (d4_0_25_bin != 0) {
+            $("#d420").append(d4_0_25_bin + "%");
+        }
+        if (d4_25_50_bin != 0) {
+            $("#d410").append(d4_25_50_bin + "%");
+        }
+    
+        if (d4_50_75_bin != 0) {
+            $("#d40").append(d4_50_75_bin + "%");
+        }
+    
+        if (d4_75_100_bin != 0) {
+            $("#d4110").append(d4_75_100_bin + "%");
+        }
+    
+        if (d4_100_and_higher_bin != 0) {
+            $("#d4120").append(d4_100_and_higher_bin + "%");
+        }
+    }
+    else{
+        $("#d4").remove();
+    }
+    
+
+
+
+    if (d5_filter) {
+        if (d5_0_25_bin != 0) {
+            $("#d520").append(d5_0_25_bin + "%");
+        }
+        if (d5_25_50_bin != 0) {
+            $("#d510").append(d5_25_50_bin + "%");
+        }
+
+        if (d5_50_75_bin != 0) {
+            $("#d50").append(d5_50_75_bin + "%");
+        }
+
+        if (d5_75_100_bin != 0) {
+            $("#d5110").append(d5_75_100_bin + "%");
+        }
+
+        if (d5_100_and_higher_bin != 0) {
+            $("#d5120").append(d5_100_and_higher_bin + "%");
+        }
+    }
+    else{
+        $("#d5").remove();
+    }
+
+    if (flow_0_25_bin != 0) {
+        $("#flow20").append(flow_0_25_bin + "%");
+    }
+
+    if (flow_50_bin != 0) {
+        $("#flow10").append(flow_50_bin + "%");
+    }
+
+    if (flow_50_75_bin != 0) {
+        $("#flow0").append(flow_50_75_bin + "%");
+    }
+
+    if (flow_75_100_bin != 0) {
+        $("#flow110").append(flow_75_100_bin + "%");
+    }
+
+    if (flow_100_and_higher_bin != 0) {
+        $("#flow120").append(flow_100_and_higher_bin + "%");
+    }
+}
+
+function draw_bins_forward(data2) {
+
+
+    console.log('draw bins');
+
+    var co2_400_600_bin = 0;
+    var co2_600_800_bin = 0;
+    var co2_800_1000_bin = 0;
+    var co2_1000_1200_bin = 0;
+    var co2_1200_and_higher_bin = 0;
+
+
+
+    var hum_0_20_bin = 0;
+    var hum_20_40_bin = 0;
+    var hum_40_60_bin = 0;
+    var hum_60_80_bin = 0;
+    var hum_80_and_higher_bin = 0;
+
+
+
+    var t1_minus_15_bin = 0;
+    var t1_15_18_bin = 0;
+    var t1_19_22_bin = 0;
+    var t1_23_25_bin = 0;
+    var t1_25_and_higher_bin = 0;
+
+
+
+
+
+    var dp_minus_10_0_bin = 0;
+    var dp_0_10_bin = 0;
+    var dp_10_20_bin = 0;
+    var dp_20_30_bin = 0;
+    var dp_30_and_higher_bin = 0;
+
+
+
+    var flow_0_25_bin = 0;
+    var flow_50_bin = 0;
+    var flow_50_75_bin = 0;
+    var flow_75_100_bin = 0;
+    var flow_100_and_higher_bin = 0;
+
+
+
+
+
+
+
+    for (let i = 0; i < data2.length; i++) { // days
+        for (let j = 0; j < data2[i].length; j++) { // 10-minute intervals
+
+            if (data2[i][j].co2 > 400 && data2[i][j].co2 < 600 || data2[i][j].co2 == 400 || data2[i][j].co2 == 600) {
+                co2_400_600_bin++;
+            }
+            if (data2[i][j].co2 > 600 && data2[i][j].co2 < 800 || data2[i][j].co2 == 800) {
+                co2_600_800_bin++;
+            }
+            if (data2[i][j].co2 > 800 && data2[i][j].co2 < 1000 || data2[i][j].co2 == 1000) {
+                co2_800_1000_bin++;
+            }
+            if (data2[i][j].co2 > 999 && data2[i][j].co2 < 1200 || data2[i][j].co2 == 1200) {
+                co2_1000_1200_bin++;
+            } else if (data2[i][j].co2 > 1200) {
+                co2_1200_and_higher_bin++;
+            }
+
+            if (data2[i][j].hum <20 || data2[i][j].hum == 20) {
+                hum_0_20_bin++;
+            }
+            if (data2[i][j].hum > 20 && data2[i][j].hum < 30 || data2[i][j].hum == 30) {
+                hum_20_40_bin++;
+            }
+            if (data2[i][j].hum > 30 && data2[i][j].hum < 50 || data2[i][j].hum == 50) {
+                hum_40_60_bin++;
+            }
+            if (data2[i][j].hum > 50 && data2[i][j].hum < 70 || data2[i][j].hum == 70) {
+                hum_60_80_bin++;
+            } else if (data2[i][j].hum > 70) {
+                hum_80_and_higher_bin++;
+            }
+
+            if (data2[i][j].temp < 16 || data2[i][j].temp == 16) {
+                t1_minus_15_bin++;
+            }
+            if (data2[i][j].temp > 16 && data2[i][j].temp < 18 || data2[i][j].temp == 18) {
+                t1_15_18_bin++;
+            }
+            if (data2[i][j].temp > 19 && data2[i][j].temp < 21 || data2[i][j].temp == 21) {
+                t1_19_22_bin++;
+            }
+            if (data2[i][j].temp > 22 && data2[i][j].temp < 25 || data2[i][j].temp == 25) {
+                t1_23_25_bin++;
+            } else if (data2[i][j].temp > 26) {
+                t1_25_and_higher_bin++;
+            }
+
+            
+
+           
+
+            
+
+            if (data2[i][j].dp < 0 || data2[i][j].dp == 0) {
+                dp_minus_10_0_bin++;
+            }
+            if (data2[i][j].dp > 0 && data2[i][j].dp < 4 || data2[i][j].dp == 4) {
+                dp_0_10_bin++;
+            }
+            if (data2[i][j].dp > 4 && data2[i][j].dp < 8 || data2[i][j].dp == 8) {
+                dp_10_20_bin++;
+            }
+            if (data2[i][j].dp > 8 && data2[i][j].dp < 12 || data2[i][j].dp == 12) {
+                dp_20_30_bin++;
+            } else if (data2[i][j].dp > 12) {
+                dp_30_and_higher_bin++;
+            }
+            
+            if(data2[i][j].flow >400)data2[i][j].flow = +data2[i][j].flow *0.03;//esp forward
+            if(location.search.split('serial=f')[1] != undefined) data2[i][j].flow = data2[i][j].flow/3;//esp forward
+            if (data2[i][j].flow < 25 || data2[i][j].flow == 25 ) {
+                flow_0_25_bin++;
+            }
+            if (data2[i][j].flow > 25 && data2[i][j].flow < 40 || data2[i][j].flow == 40) {
+                flow_50_bin++;
+            }
+            if (data2[i][j].flow > 40 && data2[i][j].flow < 55 || data2[i][j].flow == 55) {
+                flow_50_75_bin++;
+            }
+            if (data2[i][j].flow > 55 && data2[i][j].flow < 75 || data2[i][j].flow == 75) {
+                flow_75_100_bin++;
+            } else if (data2[i][j].flow > 75) {
+                flow_100_and_higher_bin++;
+            }
+
+        };
+    }
+
+    var size = 0; //size = array length
+    for (let i = 0; i < data2.length; i++) { // i loop_dates over days
+        var size = size + data2[i].length;
+        Object.values(data2[i]).forEach(val => {
+
+
+
+        });
+    }
+
+
+
+    co2_400_600_bin = Math.round(100 / size * co2_400_600_bin);
+    co2_600_800_bin = Math.round(100 / size * co2_600_800_bin);
+    co2_800_1000_bin = Math.round(100 / size * co2_800_1000_bin);
+    co2_1000_1200_bin = Math.round(100 / size * co2_1000_1200_bin);
+    co2_1200_and_higher_bin = Math.round(100 / size * co2_1200_and_higher_bin);
+
+
+
+    hum_0_20_bin = Math.round(100 / size * hum_0_20_bin)
+    hum_20_40_bin = Math.round(100 / size * hum_20_40_bin)
+    hum_40_60_bin = Math.round(100 / size * hum_40_60_bin)
+    hum_60_80_bin = Math.round(100 / size * hum_60_80_bin)
+    hum_80_and_higher_bin = Math.round(100 / size * hum_80_and_higher_bin)
+
+
+
+    t1_minus_15_bin = Math.round(100 / size * t1_minus_15_bin)
+    t1_15_18_bin = Math.round(100 / size * t1_15_18_bin)
+    t1_19_22_bin = Math.round(100 / size * t1_19_22_bin)
+    t1_23_25_bin = Math.round(100 / size * t1_23_25_bin)
+    t1_25_and_higher_bin = Math.round(100 / size * t1_25_and_higher_bin)
+
+
+
+
+    dp_minus_10_0_bin = Math.round(100 / size * dp_minus_10_0_bin)
+    dp_0_10_bin = Math.round(100 / size * dp_0_10_bin)
+    dp_10_20_bin = Math.round(100 / size * dp_10_20_bin)
+    dp_20_30_bin = Math.round(100 / size * dp_20_30_bin)
+    dp_30_and_higher_bin = Math.round(100 / size * dp_30_and_higher_bin)
+
+
+
+
+
+    flow_0_25_bin = Math.round(100 / size * flow_0_25_bin)
+    flow_50_bin = Math.round(100 / size * flow_50_bin)
+    flow_50_75_bin = Math.round(100 / size * flow_50_75_bin)
+    flow_75_100_bin = Math.round(100 / size * flow_75_100_bin)
+    flow_100_and_higher_bin = Math.round(100 / size * flow_100_and_higher_bin)
+
+
+
+    $("#400").empty();
+    $("#600").empty();
+    $("#800").empty();
+    $("#1000").empty();
+    $("#1200").empty();
+
+
+
+    $("#0").empty();
+    $("#20").empty();
+    $("#40").empty();
+    $("#60").empty();
+    $("#80").empty();
+
+
+
+    $("#m20").empty();
+    $("#m10").empty();
+    $("#t0").empty();
+    $("#t10").empty();
+    $("#t20").empty();
+
+
+
+    $("#mm20").empty();
+    $("#mm10").empty();
+    $("#tt0").empty();
+    $("#tt10").empty();
+    $("#tt20").empty();
+
+
+
+    $("#mmm20").empty();
+    $("#mmm10").empty();
+    $("#ttt0").empty();
+    $("#ttt10").empty();
+    $("#ttt20").empty();
+
+
+
+    $("#flow20").empty();
+    $("#flow10").empty();
+    $("#flow0").empty();
+    $("#flow110").empty();
+    $("#flow120").empty();
+
+
+
+
+
+    if (co2_400_600_bin != 0) {
+        $("#400").append(co2_400_600_bin + "%");
+    }
+
+    if (co2_600_800_bin != 0) {
+        $("#600").append(co2_600_800_bin + "%");
+    }
+
+    if (co2_800_1000_bin != 0) {
+        $("#800").append(co2_800_1000_bin + "%");
+    }
+
+    if (co2_1000_1200_bin != 0) {
+        $("#1000").append(co2_1000_1200_bin + "%");
+    }
+
+    if (co2_1200_and_higher_bin != 0) {
+        $("#1200").append(co2_1200_and_higher_bin + "%");
+    }
+
+
+
+    if (hum_0_20_bin != 0) {
+        $("#0").append(hum_0_20_bin + "%");
+    }
+
+    if (hum_20_40_bin != 0) {
+        $("#20").append(hum_20_40_bin + "%");
+    }
+
+    if (hum_40_60_bin != 0) {
+        $("#40").append(hum_40_60_bin + "%");
+    }
+
+    if (hum_60_80_bin != 0) {
+        $("#60").append(hum_60_80_bin + "%");
+    }
+
+    if (hum_80_and_higher_bin != 0) {
+        $("#80").append(hum_80_and_higher_bin + "%");
+    }
+
+
+
+    if (t1_minus_15_bin != 0) {
+        $("#m20").append(t1_minus_15_bin + "%");
+    }
+
+    if (t1_15_18_bin != 0) {
+        $("#m10").append(t1_15_18_bin + "%");
+    }
+
+    if (t1_19_22_bin != 0) {
+        $("#t0").append(t1_19_22_bin + "%");
+    }
+
+    if (t1_23_25_bin != 0) {
+        $("#t10").append(t1_23_25_bin + "%");
+    }
+
+    if (t1_25_and_higher_bin != 0) {
+        $("#t20").append(t1_25_and_higher_bin + "%");
+    }
+
+
+    if (dp_minus_10_0_bin != 0) {
+        $("#mmm20").append(dp_minus_10_0_bin + "%");
+    }
+
+    if (dp_0_10_bin != 0) {
+        $("#mmm10").append(dp_0_10_bin + "%");
+    }
+
+    if (dp_10_20_bin != 0) {
+        $("#ttt0").append(dp_10_20_bin + "%");
+    }
+
+    if (dp_20_30_bin != 0) {
+        $("#ttt10").append(dp_20_30_bin + "%");
+    }
+
+    if (dp_30_and_higher_bin != 0) {
+        $("#ttt20").append(dp_30_and_higher_bin + "%");
+    }
+
+
+
+    if (flow_0_25_bin != 0) {
+        $("#flow20").append(flow_0_25_bin + "%");
+    }
+
+    if (flow_50_bin != 0) {
+        $("#flow10").append(flow_50_bin + "%");
+    }
+
+    if (flow_50_75_bin != 0) {
+        $("#flow0").append(flow_50_75_bin + "%");
+    }
+
+    if (flow_75_100_bin != 0) {
+        $("#flow110").append(flow_75_100_bin + "%");
+    }
+
+    if (flow_100_and_higher_bin != 0) {
+        $("#flow120").append(flow_100_and_higher_bin + "%");
+    }
+
+
+
+}
+
+function calculate_rdp(dp, t1, t2) {
+    if (t1 === t2) {
+        if(dp>t2) return 100;
+        return 0;
+    }
+    
+    let rdp = ((dp - t2) / (t1 - t2)) * 100;
+    rdp = Math.max(0, Math.min(100, rdp))
+    return rdp;
+}

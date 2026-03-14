@@ -1,0 +1,172 @@
+div.tooltip {   
+  position: absolute;                 
+  text-align: center;                 
+  width: 150px;                                       
+  height: 45px;                                       
+  padding: 2px;                               
+  font: 18px sans-serif;              
+  background: #ededed;        
+  border: 0px;                
+  border-radius: 8px;                 
+  pointer-events: none;                       
+}
+
+    
+    #pdf{
+        margin-top: 20px;
+        background-color: white;
+    }
+    
+    #block_container
+    {
+        text-align:center;
+    }
+    #startDate, #endDate
+    {
+        display:inline;
+        font-size: 20px;
+    }
+
+
+    input{
+        color: rgb(97, 97, 97);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 15px;
+    }
+
+    h1{
+        font-size: 20px;
+        font-family: Arial, Helvetica, sans-serif;
+    }
+
+    table, th, td {
+      border: 1px solid black;
+      border-collapse: collapse;
+      font-size: 20px;
+      background-color: white;
+    }
+    th{
+        width: 150px;
+        font-size: 20px;
+        font-family: Arial, Helvetica, sans-serif;
+    }
+    thead{
+        cursor: grab;
+    }
+    .center {
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .dataTables_wrapper .dataTables_filter {
+      width:100%;
+      text-align:center;
+    }
+    .dataTables_wrapper .dataTables_info {
+      width:100%;
+      text-align:center;
+    }
+      .container {
+        position: relative;
+        text-align: center;
+        
+      }
+
+      #co2_1{
+        background-image: linear-gradient(to right,rgb(0, 255, 0), rgb(0, 214, 0));
+      }
+
+      #co2_2{
+        background-image: linear-gradient(to right,rgb(0, 214, 0), rgb(255, 153, 0));
+      }
+
+      #co2_3{
+        background-image: linear-gradient(to right,rgb(255, 153, 0), rgb(211, 50, 21));
+      }
+
+      #co2_4{
+        background-image: linear-gradient(to right,rgb(211, 50, 21), rgb(255, 0, 0));
+      }
+
+      #good_freshr{
+        background-color: #50f0e6;
+      }
+
+      #sgood_freshr{
+        background-color: #50ccaa;
+      }
+
+      #moderate_freshr{
+        background-color: #f0e641;
+      }
+
+      #good{
+        background-color: rgb(0, 255, 0);
+      }
+
+      #sgood{
+        background-color: rgb(0, 197, 0);
+      }
+
+      #moderate{
+        background-color: rgb(255, 153, 0);
+      }
+
+      #sbad{
+        background-color: rgb(211, 50, 21);
+      }
+
+      #bad{
+        background-color: rgb(255, 0, 0);
+      }
+
+      #Dsgood{
+        background-color: #bbCF4C;
+      }
+
+      #Dgood{
+        background-color: #97BC6A;
+      }
+
+      #Dmoderate{
+        background-color: #EEC20B
+      }
+
+      #Dsbad{
+        background-color: #F29305
+      }
+
+      #Dbad{
+        background-color: #960018
+      }
+
+      #vcold{
+        background-color: rgb(35, 68, 255);
+      }
+      
+      #cold{
+        background-color: rgb(0, 255, 191);
+      }
+      
+      #normal{
+        background-color: rgb(115, 255, 0);
+      }
+
+      #grey{
+        background-color: rgb(77, 77, 77);
+      }
+      
+      #warm{
+        background-color: rgb(255, 123, 0);
+      }
+      
+      #hot{
+        background-color: rgb(255, 0, 0);
+      }
+
+      #KwH{
+        background-color: rgb(119, 119, 119);
+      }
+      
+      .top-left {
+        position: absolute;
+      }

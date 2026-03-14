@@ -47,6 +47,7 @@ class FreshRConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            client = None
             try:
                 from .api import FreshRApiClient, FreshRAuthError
                 session = async_get_clientsession(self.hass)
@@ -77,6 +78,11 @@ class FreshRConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "cannot_connect"
                 else:
                     errors["base"] = "unknown"
+            
+            finally:
+                # Always close the client session to prevent "Unclosed client session" errors
+                if client is not None:
+                    await client.async_close()
 
         return self.async_show_form(
             step_id="user",

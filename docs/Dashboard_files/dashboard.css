@@ -1,0 +1,477 @@
+/* ============================================================================
+   DASHBOARD STYLES - Fresh-R Dashboard
+   ============================================================================ */
+
+/* ============================================================================
+   RESET & BASE
+   ============================================================================ */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    overflow: hidden;
+}
+
+button {
+    height: max-content;
+    width: max-content;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 16px;
+}
+
+/* ============================================================================
+   MAIN LAYOUT - CSS GRID
+   ============================================================================ */
+
+.main-content {
+    width: 100vw;
+    height: calc(100vh - 50px);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 8px;
+}
+
+#left-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px;
+    min-height: 0;
+}
+
+#right-panel {
+    display: grid;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    min-height: 0;
+}
+
+#right-panel > #toolbar {
+    display: none;
+}
+
+#right-panel.dust-mode {
+    grid-template-rows: auto 95%;
+    align-content: start;
+}
+
+#right-panel.dust-mode > #toolbar {
+    display: flex;
+}
+
+#right-panel.dust-mode #lin-mid-container {
+    padding: 50px !important;
+    box-sizing: border-box;
+}
+
+#right-panel.dust-mode #lin-mid-container .svg-container {
+    max-width: calc(100% - 100px);
+    max-height: calc(100% - 100px);
+    margin: 50px auto;
+}
+
+#right-panel.dust-monitor-mode {
+    grid-template-rows: auto repeat(2, minmax(0, 1fr));
+}
+
+#right-panel.dust-monitor-mode > #toolbar {
+    display: flex;
+}
+
+/* ============================================================================
+   TOOLBAR
+   ============================================================================ */
+
+#toolbar {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    line-height: 50px;
+    background-color: #fff;
+    flex-wrap: wrap;
+    overflow: hidden;
+}
+
+
+.overview-list {
+    list-style: none;
+    display: flex;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.overview-item {
+    margin: 0;
+    padding: 0;
+}
+
+.overview-btn {
+    font-size: 18px;
+    padding: 8px 12px;
+    width: 85px;
+    border: 2px solid #ccc;
+    background-color: #f2f2f2;
+    cursor: pointer;
+}
+
+.overview-btn:hover {
+    background-color: #e6e6e6;
+}
+
+#oxygen, #PM03 {
+    border-radius: 15px 0 0 15px;
+}
+
+#dust, #AQI {
+    border-radius: 0 15px 15px 0;
+}
+
+.active-overview {
+    background-color: #fff !important;
+}
+
+#oxygen.active-overview {
+    color: rgb(250, 226, 12);
+}
+
+#humidity.active-overview {
+    color: rgb(11, 166, 255);
+}
+
+#dust.active-overview {
+    color: rgb(138, 78, 0);
+}
+
+.datepicker-container {
+    list-style: none;
+    display: flex;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.datepicker-item {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+}
+
+#datepicker {
+    background-color: #f2f2f2;
+    border-radius: 0;
+    border: 0;
+    font-size: 18px;
+    outline: 0;
+    text-align: center;
+    cursor: pointer;
+    padding: 8px 4px;
+    width: 170px;
+    min-height: 48px;
+    margin: 0;
+    -webkit-appearance: none;
+    border-top: 2px solid #ccc;
+    border-bottom: 2px solid #ccc;
+}
+
+.datepicker-prev-btn,
+.datepicker-next-btn {
+    background-color: #f2f2f2;
+    border: 2px solid #ccc;
+    cursor: pointer;
+    padding: 8px 12px;
+    margin: 0;
+    font-size: 28px;
+    outline: 0;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.datepicker-prev-btn:hover,
+.datepicker-next-btn:hover {
+    background-color: #e6e6e6;
+}
+
+.datepicker-prev-btn {
+    border-top-left-radius: 15px;
+    border-bottom-left-radius: 15px;
+}
+
+.datepicker-next-btn {
+    border-top-right-radius: 15px;
+    border-bottom-right-radius: 15px;
+    margin-right: 15px;
+}
+
+.dashboard-link-to-report,
+#export {
+    border: 2px solid #ccc;
+    border-radius: 15px;
+    padding: 8px 16px;
+    background-color: #f2f2f2;
+    color: #000;
+    margin-right: 25px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.dashboard-link-to-report:hover,
+#export:hover {
+    background-color: #e6e6e6;
+}
+
+/* ============================================================================
+   CHARTS
+   ============================================================================ */
+
+.polar-chart-container {
+    background-color: #fff;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lin-chart-container {
+    background-color: #fff;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+}
+
+.svg-container {
+    width: 100%;
+    height: 100%;
+}
+
+.svg-container svg,
+.polar-chart-container svg {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.polar-chart-container svg {
+    max-height: 90%;
+    max-width: 90%;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* ============================================================================
+   CHART ELEMENTS
+   ============================================================================ */
+
+.avgspike,
+.avgspike2,
+.avgsurface {
+    font-size: 50px;
+}
+
+.what {
+    font-size: 32px;
+}
+
+.clock {
+    font-size: 70px;
+}
+
+.data-type-text {
+    font-size: 32px;
+}
+
+.chart-text {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.axis {
+    font-size: 24px;
+    font-weight: 600;
+    fill: #B0B3B7;
+}
+
+.polardata {
+    stroke: transparent;
+    stroke-width: 5px;
+}
+
+.polardata.active {
+    stroke: #B0B3B7;
+    stroke-width: 3px;
+}
+
+/* ============================================================================
+   TOOLTIP / HIGHLIGHT
+   ============================================================================ */
+
+.highlight {
+    opacity: 0;
+    font-size: 26px;
+    font-weight: 600;
+}
+
+.highlight.active {
+    opacity: 1;
+}
+
+.hidden {
+    opacity: 0;
+}
+
+rect {
+    fill: transparent;
+}
+
+.highlight-text-surface {
+    fill: #fff;
+    opacity: 1 !important;
+}
+
+/* ============================================================================
+   RESPONSIVE - TABLETS
+   ============================================================================ */
+
+@media (max-width: 1024px) and (orientation: portrait) {
+    body {
+        overflow: auto;
+    }
+
+    .main-content {
+        width: 100%;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+        height: auto;
+    }
+    
+    #left-panel,
+    #right-panel {
+        min-height: 400px;
+    }
+}
+
+/* ============================================================================
+   RESPONSIVE - MOBILE
+   ============================================================================ */
+
+@media (max-width: 767px) {
+    body {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .main-content {
+        width: 100%;
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: 100vh;
+        padding: 4px;
+        gap: 4px;
+    }
+    
+    #toolbar {
+        height: auto;
+        flex-direction: column;
+        align-items: center;
+        overflow: visible;
+        padding: 10px;
+    }
+    
+    .overview-list {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .overview-btn {
+        font-size: 14px;
+        width: auto;
+        padding: 6px 10px;
+    }
+
+    .dashboard-link-to-report,
+    #export {
+        font-size: 14px;
+        padding: 6px 12px;
+        margin-right: 8px;
+    }
+
+    .datepicker-container {
+        justify-content: center;
+    }
+
+    #datepicker {
+        width: 140px;
+        font-size: 14px;
+    }
+
+    .datepicker-prev-btn,
+    .datepicker-next-btn {
+        font-size: 20px;
+        padding: 6px 10px;
+    }
+    
+    #left-panel,
+    #right-panel {
+        min-height: 400px;
+    }
+}
+
+/* ============================================================================
+   DIALOG / INFO OVERLAY
+   ============================================================================ */
+
+.ui-dialog {
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    max-width: 95vw !important;
+    max-height: 95vh !important;
+}
+
+.ui-dialog .ui-dialog-titlebar {
+    background: #f8f8f8;
+    border-bottom: 1px solid #e0e0e0;
+    border-radius: 8px 8px 0 0;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.ui-dialog .ui-dialog-title {
+    color: #333;
+}
+
+.ui-dialog .ui-dialog-titlebar-close {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    margin: -14px 0 0 0;
+    transition: all 0.2s;
+}
+
+.ui-dialog .ui-dialog-titlebar-close:hover {
+    background: #f5f5f5;
+    border-color: #999;
+}
+
+.ui-dialog .ui-dialog-content {
+    padding: 20px;
+    background: #fff;
+    max-height: calc(95vh - 80px) !important;
+}
+
+.ui-widget-overlay {
+    background: rgba(0, 0, 0, 0.5);
+}

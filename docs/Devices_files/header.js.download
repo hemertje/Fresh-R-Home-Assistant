@@ -1,0 +1,185 @@
+$(".hamburger-item").click(function() {
+
+    $(".collapse-container").toggleClass("show-collapse-container");
+});
+
+$('body').click(function(evt){    
+ 
+    if(!$(evt.target).hasClass('hamburger-icon') && 
+        !$(evt.target).hasClass('hamburger-item') && 
+        !$(evt.target).hasClass('collapse-container') &&
+        !$(evt.target).hasClass('nav-item') &&
+        !$(evt.target).hasClass('nav-link')) {
+
+        $(".collapse-container").removeClass("show-collapse-container");
+    }
+});
+
+$("#header-username").click(function(e) {
+    e.preventDefault();
+});
+
+function addUsernameToHeader() {
+
+    
+
+        var cookies = getCookies();
+        var sess_token = cookies["sess_token"];
+        var date = new Date;
+        var timezoneOffset = date.getTimezoneOffset();
+        timezoneOffset = timezoneOffset.toString().replace("-", ""); //API doesn't need minus
+
+        var requestParameters = {
+            "tzoffset": timezoneOffset,
+            "token": sess_token,
+            "requests": {
+                "user_info": {
+                    "request":"userinfo",
+                    "fields":[ 
+                        "first_name",
+                    ]
+                }
+            }
+        }
+
+        requestParameters = JSON.stringify(requestParameters);
+
+        $.post('https://dashboard.bw-log.com/api.php?q=' + requestParameters, function(data) {
+
+            data = JSON.parse(data);
+
+            localStorage.setItem('username', data.user_info.first_name);
+
+            $("#header-username").append(data.user_info.first_name +  "<i class='fas fa-angle-down'></i>");
+        });
+
+     
+}
+function urlParameters()
+{
+    var parameters = window.location.search.substring(1);    
+    var requestSegments = parameters.split("&");
+
+    urlParameters = {}
+
+    for(var i = 0; i < requestSegments.length; i++) {
+        
+        var urlParameter = requestSegments[i].split("=");
+        urlParameters[urlParameter[0]] = urlParameter[1];
+    }
+    return urlParameters;
+}
+function addRoomToHeader() 
+{   
+    var urlParams = urlParameters();
+    var cookies = getCookies();
+    var sess_token = cookies["sess_token"];
+    var date = new Date;
+    var timezoneOffset = date.getTimezoneOffset();
+    timezoneOffset = timezoneOffset.toString().replace("-", ""); //API doesn't need minus
+        var requestParameters = {
+            "tzoffset": timezoneOffset,
+            "token": sess_token,
+            "requests": {
+                "user_info": {
+                    "request":"userinfo",
+                    "fields":[ 
+                        "first_name",
+                        "last_name",
+                        "gender",
+                        "locale",
+                        "type",
+                    ]
+                },
+                "user_units": {
+                    "request":"syssearch",
+                    "role":"user",
+                    "fields": [
+                        "units"
+                    ]
+                }
+            }
+        }
+        console.log(requestParameters);
+
+        requestParameters = JSON.stringify(requestParameters);
+        
+        /**
+         * Fetch user info
+         */
+        $.post('https://dashboard.bw-log.com/api.php?q=' + requestParameters, function(data) {
+
+            try {
+                var userData = JSON.parse(data);
+            
+                units = userData.user_units.units;
+            } catch (error) {
+                units = [];
+            }
+
+            var requests = {}
+            for (let i = 0; i < units.length; i++) {
+                
+                requests[units[i].id] = {
+                    "request": "sysinfo",
+                    "id": units[i].id,
+                    "fields": [
+                        "type",
+                        "room"
+                    ]
+                }
+            }
+        
+            requestParameters = {
+                "tzoffset": timezoneOffset,
+                "token": sess_token,
+                "requests": requests
+            }
+
+            requestParameters = JSON.stringify(requestParameters);
+        
+            /**
+             * Fetch device info
+             */
+            $.post("https://dashboard.bw-log.com/api.php?q=" + requestParameters, function(data) {
+
+                try {
+                    var sysInfoData = JSON.parse(data);
+
+                } catch (error) {
+                    var sysInfoData = [];
+                    sysInfoData[serial]["type"] = "";
+                    sysInfoData[serial]["room"] = "";
+                }
+            
+                
+                
+                
+                if($('main').is('#devices-page')) {
+                    console.log("device-page");
+                }
+                else
+                {
+                    var serial = urlParams["serial"];
+                    console.log(sysInfoData[serial]);
+                    $("#header-type").text("Type:");
+                    $("#header-room").text("Room:");
+                    $("#header-type-result").text(sysInfoData[serial]["type"]);
+                    $("#header-room-result").text(sysInfoData[serial]["room"]);
+                }
+                    
+                
+            });
+            
+    });    
+}   
+
+$(".user-dropdown-toggle").click(function(e) {
+
+    //console.log("dropdown-toggle");
+    e.preventDefault();
+    $(".user-dropdown-container").toggleClass("user-dropdown-visible");
+});
+
+addRoomToHeader();
+addUsernameToHeader();

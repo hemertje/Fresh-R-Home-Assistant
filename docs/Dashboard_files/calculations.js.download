@@ -1,0 +1,359 @@
+function generatePDF() { //set the settings and generates the pdf file. (downloaded with download pdf button on site.)
+    const element = document.getElementById("pdf"); //gets the element name from the DIV called pdf
+    var opt = {
+        margin: 2,
+        html2canvas: {
+            scale: 1
+        },
+        jsPDF: {
+            orientation: 'portrait',
+            unit: 'cm',
+            format: 'A4'
+        },
+        // pagebreak: {
+        //     mode: 'avoid-all',
+        //     after: ['#dew', '#flow']
+        // }
+    };
+    html2pdf()
+        .set(opt)
+        .from(element)
+        .save("Table"); //saves the pdf as "Table.pdf"
+}
+
+function data_10_seconds(serial, start, end) { // gets the data from every day filled in the date boxes 
+    // when nothing filled in it set the dates to today
+    var cookies = getCookies();
+    var token = cookies["sess_token"]; 
+    var start = new Date(start);
+    var end = new Date(end);
+    var loop_date = new Date(start);
+    var data2 = new Array();
+    var count = 0;
+    while (loop_date <= end) {
+
+    var date = formatDate(loop_date);
+    request = {
+    "tzoffset": 60,
+    "token": token,
+    "requests": {
+    "chart-data": {
+    "request": "fresh-r-day",
+    "request_date": date,
+    "serial": serial,
+    "fields": [
+    "date",
+    "co2",
+    "hum",
+    "d5_25",
+    "d4_25",
+    "d1_25",
+    "t1",
+    "t2",
+    "t3",
+    "dp",
+    "flow",
+    "t4",
+    "fan1",
+    "fan2",
+    "tbal",
+    "mode"
+    ]
+    }
+    }
+    }
+    var endpoint = "https://dashboard.bw-log.com/testdata-api.php?q=" + JSON.stringify(request);
+
+    $.ajax({
+    url: endpoint,
+    async: false, // tells browser to wait for reply
+    type: 'post',
+    dataType: "json",
+    success: function(output) {
+    data = output;
+    data2[count] = output["chart-data"];
+    }
+    });
+
+
+    var newDate = loop_date.setDate(loop_date.getDate() + 1);
+    loop_date = new Date(newDate);
+    count++; //number of days
+    }
+    ////console.log(data2); //array
+    var start_interval = new Date(data2[0][0].date); // first moment of data range 
+    var days = data2.length;
+    var records = data2[days - 1].length;
+    var end_interval = new Date(data2[days - 1][records - 1].date);
+    var interval = (end_interval - start_interval) / 1000; // default is milliseconds
+
+    ////console.log(start_interval)     //start date
+    ////console.log(end_interval)       //end date
+
+    return [data2, interval];
+}
+
+function get_data_days(serial, start, end) { // gets the data from every day filled in the date boxes 
+    // when nothing is filled in it will set the dates to today
+
+    var start = new Date(start);
+    var end = new Date(end);
+    var loop_date = new Date(start);
+    var data2 = new Array();
+    var count = 0;
+    while (loop_date <= end) {
+
+    var date = formatDate(loop_date);
+    var cookies = getCookies();
+    var token = cookies["sess_token"];
+    console.log(token);    
+    request = {
+    "token": token,
+    "tzoffset": 60,
+    "requests": {
+    "chart-data": {
+    "request": "fresh-r-day",
+    "request_date": date,
+    "serial": serial,
+    "fields": [
+    "date",
+    "co2",
+    "hum",
+    "d5_25",
+    "d4_25",
+    "d1_25",
+    "t1",
+    "t2",
+    "dp",
+    "flow",
+    "t4",
+    "t3",
+    ]
+    }
+    }
+    }
+    var endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+
+    $.ajax({
+    url: endpoint,
+    async: false, // tell browser to wait for reply 
+    type: 'post',
+    dataType: "json",
+    success: function(output) {
+    data = output;
+    data2[count] = output["chart-data"];
+    }
+    });
+
+
+    var newDate = loop_date.setDate(loop_date.getDate() + 1);
+    loop_date = new Date(newDate);
+    count++; //number of days
+    }
+    console.log(data2);
+    var start_interval = new Date(data2[0][0].date); // first moment of data range 
+    var days = data2.length;
+    var records = data2[days - 1].length;
+    var end_interval = new Date(data2[days - 1][records - 1].date);
+    var interval = (end_interval - start_interval) / 1000; // default is milliseconds
+
+    return [data2, interval];
+}
+
+function get_data_days_forward(serial, start, end) { // gets the data from every day filled in the date boxes 
+    // when nothing is filled in it will set the dates to today
+
+    var start = new Date(start);
+    var end = new Date(end);
+    var loop_date = new Date(start);
+    var data2 = new Array();
+    var count = 0;
+    while (loop_date <= end) {
+
+    var date = formatDate(loop_date);
+    var cookies = getCookies();
+    console.log(cookies);
+    request = {
+    "token": cookies["token"],
+    "tzoffset": 60,
+    "requests": {
+    "chart-data": {
+    "request": "forward-day",
+    "request_date": date,
+    "serial": serial,
+    "fields": [
+        "date",
+        "temp",
+        "flow",
+        "co2",
+        "hum",
+        "dp",
+        ]
+    }
+    }
+    }
+    var endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+
+    $.ajax({
+    url: endpoint,
+    async: false, // tell browser to wait for reply 
+    type: 'post',
+    dataType: "json",
+    success: function(output) {
+    data = output;
+    data2[count] = output["chart-data"];
+    }
+    });
+
+
+    var newDate = loop_date.setDate(loop_date.getDate() + 1);
+    loop_date = new Date(newDate);
+    count++; //number of days
+    }
+    console.log(data2);
+    var start_interval = new Date(data2[0][0].date); // first moment of data range 
+    var days = data2.length;
+    var records = data2[days - 1].length;
+    var end_interval = new Date(data2[days - 1][records - 1].date);
+    var interval = (end_interval - start_interval) / 1000; // default is milliseconds
+
+    return [data2, interval];
+}
+
+function get_data_days_monitor(serial, start, end){
+    var start = new Date(start);
+    var end = new Date(end);
+    var loop_date = new Date(start);
+    var data2 = new Array();
+    var count = 0;
+    while (loop_date <= end) {
+
+    var date = formatDate(loop_date);
+    cookies = getCookies();
+    //console.log(cookies);
+    request = {
+        "token": cookies["token"],
+        "tzoffset": 60,
+        "requests": {
+            "chart-data": {
+                "request": "monitor-day",
+                "serial": serial,
+                "request_date": date,
+                "fields": [
+                "date",
+                "temp",
+                "dp",
+                "co2",
+                "hum",
+                "d1_25",
+                "d1_1",
+                "d1_03",
+                "d1_10"
+                ]
+            }
+        }
+    }
+    var endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+
+    $.ajax({
+        url: endpoint,
+        async: false, // tell browser to wait for reply 
+        type: 'post',
+        dataType: "json",
+        success: function(output) {
+        data = output;
+        data2[count] = output["chart-data"];
+    }
+    });
+
+
+    var newDate = loop_date.setDate(loop_date.getDate() + 1);
+    loop_date = new Date(newDate);
+    count++; //number of days
+    }
+    console.log(data2);
+    var start_interval = new Date(data2[0][0].date); // first moment of data range 
+    var days = data2.length;
+    var records = data2[days - 1].length;
+    var end_interval = new Date(data2[days - 1][records - 1].date);
+    var interval = (end_interval - start_interval) / 1000; // default is milliseconds
+
+    return [data2, interval];
+}
+
+Date.prototype.addHours= function(h){
+   this.setHours(this.getHours()+h);
+   return this;
+}
+
+function formatDate(date) {
+   var d = new Date(date),
+       month = '' + (d.getMonth() + 1),
+       day = '' + d.getDate(),
+       year = d.getFullYear();
+
+   if (month.length < 2) 
+       month = '0' + month;
+   if (day.length < 2) 
+       day = '0' + day;
+
+   return [year, month, day].join('');
+}
+
+function formatDate2(date) {
+   var d = new Date(date),
+       month = '' + (d.getMonth() + 1),
+       day = '' + d.getDate(),
+       year = d.getFullYear();
+
+   if (month.length < 2) 
+       month = '0' + month;
+   if (day.length < 2) 
+       day = '0' + day;
+
+   return [year, month, day].join('-');
+}
+
+function get_data(serial, start, end) {
+    
+    start = formatDate2(start);
+    end = formatDate2(end);
+    $("#startDate").empty();
+    $("#endDate").empty();
+    $("#startDate").append(start);
+    $("#endDate").append(end);
+
+    if (serial == "4C001411" || serial == "40016908" || serial == "4000117E") {
+        [data2, period] = data_10_seconds(serial, start, end)
+    } else {
+        [data2, period] = get_data_days(serial, start, end)
+    }
+
+    //All area's / graph's / table's are already defined in html.
+
+    draw_bins(data2, start, end)        //fill the colored table's with bin data
+
+
+    draw_energy_pow(data2)              //fills the power and energy boxes
+
+    //draw_graph(data2, start, end)       //draws the d3 graph
+
+    //window.history.pushState("", "", 'fresh-r'); //hide url / change url
+}
+
+function get_data_forward(serial, start, end) {
+    
+    start = formatDate2(start);
+    end = formatDate2(end);
+    $("#startDate").empty();
+    $("#endDate").empty();
+    $("#startDate").append(start);
+    $("#endDate").append(end);
+
+    [data2, period] = get_data_days_forward(serial, start, end)
+
+
+    draw_bins_forward(data2, start, end)        //fill the colored table's with bin data
+    //draw_energy_pow(data2)              //fills the power and energy boxes
+
+}

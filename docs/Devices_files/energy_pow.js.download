@@ -1,0 +1,330 @@
+function draw_energy_pow(data2) {
+    var vent_loss_75 = 0; // heat loss from ventilation at an assumed constant flow of 75 m^3/h 
+
+    var heat_recovered = 0; // heat recovered from T1 -> T3 to T2 -> T4
+    var freshr_loss = 0; // Fresh-r ventilation losses: flow * (T1-T4) * Cp
+
+    var start_interval = new Date();
+    var end_interval = new Date();
+    var interval = 0;
+
+
+
+    var vent_75_pow_max = 0;
+    var vent_75_pow_min = 1000;
+    var vent_75_pow_max_date;
+    var vent_75_pow_min_date;
+
+
+
+    var freshr_recov_pow_max = 0;
+    var freshr_recov_pow_min = 1000;
+    var freshr_recov_pow_min_date;
+    var freshr_recov_pow_max_date;
+
+
+
+    var freshr_loss_pow = 0;
+    var freshr_loss_pow_max = 0;
+    var freshr_loss_pow_min = 1000;
+    var freshr_loss_pow_min_date;
+    var freshr_loss_pow_max_date;
+
+
+
+
+    for (let i = 0; i < data2.length; i++) { // days
+        for (let j = 0; j < data2[i].length; j++) { // 10-minute intervals
+
+            if (j > 0) {
+
+                start_interval = new Date(data2[i][j - 1].date)
+                end_interval = new Date(data2[i][j].date)
+                interval = (end_interval - start_interval) / 1000; // default is milliseconds
+
+                vent_loss_pow = (data2[i][j].t1 - data2[i][j].t2) * 1212 * 75 / 3600; // Watt
+                if (vent_loss_pow > vent_75_pow_max) {
+                    vent_75_pow_max = vent_loss_pow
+                    vent_75_pow_max_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                }
+                if (vent_loss_pow < vent_75_pow_min) {
+                    vent_75_pow_min = vent_loss_pow
+                    vent_75_pow_min_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                }
+
+                vent_loss_75 += vent_loss_pow * interval; // Joule
+
+                heat_recovered_pow = (data2[i][j].t4 - data2[i][j].t2) * 1212 * data2[i][j].flow / 3600; // Watt
+                if (heat_recovered_pow > freshr_recov_pow_max) {
+                    freshr_recov_pow_max = heat_recovered_pow
+                    freshr_recov_pow_max_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                }
+                if (heat_recovered_pow < freshr_recov_pow_min) {
+                    freshr_recov_pow_min = heat_recovered_pow
+                    freshr_recov_pow_min_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                }
+
+                heat_recovered += heat_recovered_pow * interval; // Joule
+
+                freshr_loss_pow = (data2[i][j].t1 - data2[i][j].t4) * 1212 * data2[i][j].flow / 3600; // Watt
+                if (freshr_loss_pow > freshr_loss_pow_max) {
+                    freshr_loss_pow_max = freshr_loss_pow
+                    freshr_loss_pow_max_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                }
+                if (freshr_loss_pow < freshr_loss_pow_min) {
+                    freshr_loss_pow_min = freshr_loss_pow
+                    freshr_loss_pow_min_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                }
+
+                freshr_loss += freshr_loss_pow * interval; // Joule
+            }
+
+        };
+    }
+
+    var AV_vent = vent_loss_75 / period; // average ventilation power in watt
+    var AV_rec = heat_recovered / period; // average heat recovered power in watt
+    var AV_loss = freshr_loss / period; //  average lost power in watt
+
+    vent_loss_75 = vent_loss_75 / 3.6e6; // in kWh
+    heat_recovered = heat_recovered / 3.6e6; // in kWh
+    freshr_loss = freshr_loss / 3.6e6; // in kWh
+
+    var vent_loss_per_day = vent_loss_75 * 24 * 3600 / period; // ventilation loss, period in seconds
+    var recovered_per_day = heat_recovered * 24 * 3600 / period; // fresh-r recovered
+    var freshr_loss_per_day = freshr_loss * 24 * 3600 / period; //fresh-r loss
+
+
+
+    var size = 0; //size = array length
+    for (let i = 0; i < data2.length; i++) { // i loop_dates over days
+        var size = size + data2[i].length;
+        Object.values(data2[i]).forEach(val => {
+
+
+
+        });
+    }
+
+
+
+
+    $("#vent_loss_75").empty();
+
+
+
+    $("#freshr_recovered").empty();
+
+
+
+    $("#freshr_loss").empty();
+
+
+
+    $("#per_day_kWh").empty();
+
+
+
+    $("#per_day_recovered").empty();
+
+
+
+    $("#per_day_loss").empty();
+
+
+
+    $("#AV_vent").empty();
+
+
+
+    $("#AV_rec").empty();
+
+
+
+    $("#AV_loss").empty();
+
+
+
+    $("#75_pow_max").empty();
+    $("#75_pow_min").empty();
+
+
+
+    $("#rec_pow_max").empty();
+    $("#rec_pow_min").empty();
+
+
+
+    $("#loss_pow_max").empty();
+    $("#loss_pow_min").empty();
+
+
+
+    $("#75_pow_max_date").empty();
+
+    $("#75_pow_min_date").empty();
+
+    $("#rec_pow_max_date").empty();
+
+    $("#rec_pow_min_date").empty();
+
+    $("#loss_pow_max_date").empty();
+
+    $("#loss_pow_min_date").empty();
+
+
+
+
+
+
+
+    $("#vent_loss_75").append(vent_loss_75.toFixed(2)); // in kWh
+
+
+
+    $("#freshr_recovered").append(heat_recovered.toFixed(2)); // in kWh
+
+
+
+    $("#freshr_loss").append(freshr_loss.toFixed(2)); // in kWh
+
+
+
+    $("#per_day_kWh").append(vent_loss_per_day.toFixed(2)); //kWh per day
+
+
+
+    $("#per_day_recovered").append(recovered_per_day.toFixed(2)); //kWh per day
+
+
+
+    $("#per_day_loss").append(freshr_loss_per_day.toFixed(2)); //kWh per day
+
+
+
+    $("#AV_vent").append(AV_vent.toFixed(2)); //AV power ventilation loss
+
+
+
+    $("#AV_rec").append(AV_rec.toFixed(2)); //AV power heat recovered
+
+
+
+    $("#AV_loss").append(AV_loss.toFixed(2)); //AV power freshr loss
+
+
+
+    $("#75_pow_max").append(vent_75_pow_max.toFixed(2)); //Max power const 75 loss
+    $("#75_pow_min").append(vent_75_pow_min.toFixed(2)); //Min power const 75 loss
+
+
+
+    $("#rec_pow_max").append(freshr_recov_pow_max.toFixed(2)); //Max power recov (acual flow)
+    $("#rec_pow_min").append(freshr_recov_pow_min.toFixed(2)); //Min power recov (acual flow)
+
+
+
+    $("#loss_pow_max").append(freshr_loss_pow_max.toFixed(2)); //Max power loss (acual flow)
+    $("#loss_pow_min").append(freshr_loss_pow_min.toFixed(2)); //Min power loss (acual flow)
+
+
+
+    $("#75_pow_max_date").append(vent_75_pow_max_date); // in kWh
+
+
+
+    $("#75_pow_min_date").append(vent_75_pow_min_date); // in kWh
+
+
+
+    $("#rec_pow_max_date").append(freshr_recov_pow_max_date); // in kWh
+
+
+
+    $("#rec_pow_min_date").append(freshr_recov_pow_min_date); // in kWh
+
+
+
+    $("#loss_pow_max_date").append(freshr_loss_pow_max_date); // in kWh
+
+
+
+    $("#loss_pow_min_date").append(freshr_loss_pow_min_date); // in kWh
+
+
+
+    var fresh_auto_loss = 0; // energy lost from T4 to T1 during desnow
+
+
+    if (serial == "4C001411" || serial == "40016908") {
+        var desnow_loss = 0;
+        var desnow_loss_max_date = 0;
+        var desnow_loss_max = 0;
+
+        for (let i = 0; i < data2.length; i++) { // days
+            for (let j = 0; j < data2[i].length; j++) { // 30s intervals
+
+                if (j > 0) {
+                    start_interval = new Date(data2[i][j - 1].date)
+                    end_interval = new Date(data2[i][j].date)
+                    interval = (end_interval - start_interval) / 1000; // default is milliseconds
+
+                    if (data2[i][j].mode == "def") {
+                        loss_desnow = +(data2[i][j].t1 - data2[i][j].t2) * data2[i][j].flow * 1212 / 3600; // extra air coming in, Watt  
+                        loss_aut = +(data2[i][j].t1 - data2[i][j].t4) * 0.50 * data2[i][j].flow * 1212 / 3600; // was loss_auto
+                        recover_aut = +(data2[i][j].t4 - data2[i][j].t2) * 0.50 * data2[i][j].flow * 1212 / 3600;
+                    } else {
+                        loss_desnow = 0;
+                        recover_desnow = 0;
+                        loss_aut = 0;
+                    }
+
+
+                    if (loss_desnow > desnow_loss_max) {
+                        desnow_loss_max = loss_desnow
+                        desnow_loss_max_date = new Date(data2[i][j].date).addHours(1).toISOString().replace(/T/, ' ').replace(/\..+/, '');
+                    }
+
+                    desnow_loss += loss_desnow * interval; // Energy in Joule
+                    fresh_auto_loss += loss_aut * interval; // Energy in Joule
+
+
+                }
+            }
+        }
+
+        //console.log("Fresh-r cumulative energy loss during desnow: " + fresh_auto_loss);
+
+        var AV_desnow = desnow_loss / period; // av power
+
+        desnow_loss = (desnow_loss + fresh_auto_loss) / 3.6e6; // in kWh
+
+        var desnow_loss_per_day = desnow_loss * 24 * 3600 / period; // per day
+
+    }
+    if(AV_desnow != undefined){
+        $("#AV_desnow").empty();
+        $("#AV_desnow").append(AV_desnow.toFixed(2)); // in kWh
+    }
+    if(desnow_loss != undefined){
+        $("#desnow_loss").empty();
+        $("#desnow_loss").append(desnow_loss.toFixed(2)); // in kWh
+    }
+    if(desnow_loss_per_day != undefined){
+        $("#desnow_loss_per_day").empty();
+        $("#desnow_loss_per_day").append(desnow_loss_per_day.toFixed(2)); // in kWh
+    }
+    if(desnow_loss_max != undefined){
+        $("#desnow_loss_max").empty();
+        $("#desnow_loss_max").append(desnow_loss_max.toFixed(2)); // in kWh
+    }
+    if(desnow_loss_max_date != undefined){
+        $("#desnow_loss_max_date").empty();
+        $("#desnow_loss_max_date").append(desnow_loss_max_date); // in kWh
+    }
+
+    
+
+    
+
+}

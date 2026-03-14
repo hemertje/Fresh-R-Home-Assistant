@@ -1,0 +1,241 @@
+function fetchReportData(dateStart, dateEnd, device) {
+
+    var timezoneOffset = new Date(date).getTimezoneOffset();
+    timezoneOffset = timezoneOffset.toString().replace('-', '');
+    var cookies = getCookies();
+    var token = cookies["sess_token"];
+    var to = dateStart;
+    var from = dateEnd;
+    var dateStart = dateStart.replace("-", "");
+    var dateStart = dateStart.replace("-", "");
+    var dateEnd = dateEnd.replace("-", "");
+    var dateEnd = dateEnd.replace("-", "");
+
+    var request;
+    console.log(general.page);
+    if(general.page == "fresh-r") {
+        var requestData = [
+            "date",
+            "mv75Loss",
+            "totalFlow",
+            "loss",
+            "CO2Removed",
+            "pm25Captured",
+            "pm03Captured",
+            "pm1Captured",
+            "WaterVaporOut",
+            "WaterLiquidOut",
+            "flow",
+            "co2"
+        ];
+
+        request = {
+            "token": token,
+            "tzoffset": timezoneOffset,
+            "requests": {
+                "data-totals": {
+                    "request": "fresh-r-sum-day",
+                    "serial": device,
+                    "request_date_start": dateStart,
+                    "request_date_end": dateEnd,
+                    "fields": requestData
+                }
+            }
+        }
+        
+        var endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+        
+        var data = d3.json(endpoint, {
+            method: "POST"
+        });  
+  
+    } else if (general.page == "forward") {
+        request = {
+            "token": "a40fd145befdc0093d3945f8f65a1ee62d842ef9f2e1b4b0364b9b082793d39f",
+            "tzoffset": timezoneOffset,
+            "requests": {
+                "data-totals": {
+                    "request": "forward-day",
+                    "serial": device,
+                    "request_date_start": dateStart,
+                    "request_date_end": dateEnd,
+                    "fields": ["date","t1","t2","t3","t4","flow","co2","hum","dp","temp"]
+                }
+            }
+        }
+        //var endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+        var endpoint = "http://vaven.nl/avg_data?serial=" + device+ "&request=forward-sum-day&datefrom=" + dateStart+"&dateto="+dateEnd+"&token="+"a40fd145befdc0093d3945f8f65a1ee62d842ef9f2e1b4b0364b9b082793d39f";
+        
+        //console.log("http://vaven.nl/forward_data.php?serial=19110001&to=2020-03-05&from=2020-03-04");
+        var data = d3.json(endpoint, {
+            method: "POST"
+        });
+       
+        
+    }
+    else if (general.page == "monitor")  {
+        console.log('test');
+        
+        request = "device_id=" + device + "&to=" + dateEnd+ "&from=" + dateStart;
+        //http://vaven.nl/monitor_vaven.php?device_id=47&to=2019-11-09&from=2019-11-08
+        
+        var endpoint = "http://vaven.nl/monitor_vaven_report.php?" + request;
+        console.log(endpoint);
+        var data = d3.json(endpoint, {
+            method: "POST"
+        });
+        console.log(data);    
+        return data;
+    }
+
+        
+    //console.log("https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request));
+
+    return data;
+}
+
+function formatReportData(data) {
+    
+    
+    if(general.page == "fresh-r") {
+        var totals = {
+            water: 0,
+            CO2Removed: 0,
+            loss: 0,
+            mv75Loss: 0,
+            pm25Captured: 0,
+            pm03Captured: 0,
+            pm1Captured: 0,
+            totalFlow: 0,
+        };
+
+        var initialDataLength = data.length;
+        
+        for (let i = 0; i < initialDataLength; i++) {
+
+            data[i].time = new Date(data[i].date);
+
+            if(data[i].CO2Removed != -10000) {
+                //format the current row
+                data[i].water = (data[i].WaterVaporOut + data[i].WaterLiquidOut);
+                totals.CO2Removed += data[i].CO2Removed;
+                totals.water += +data[i].water;
+                totals.loss += data[i].loss;
+                totals.mv75Loss += data[i].mv75Loss;
+                totals.pm25Captured += data[i].pm25Captured;
+                totals.pm03Captured += data[i].pm03Captured;
+                totals.pm1Captured += data[i].pm1Captured;
+                totals.totalFlow += data[i].totalFlow;
+            }
+        
+            if(i + 1 < initialDataLength) {
+
+                nextRowDate = new Date(data[i+1].date);
+
+                var timeDifference = Math.abs(data[i].time - nextRowDate);
+                var dayDifference = Math.ceil(timeDifference / (1000 * 60 * 60 * 24));
+                
+                
+                if(dayDifference > 1) { //fill array with non valid records 
+
+                    var nextDate = new Date(data[i].time);
+
+                    for(j = 1; j < dayDifference; j++) {
+
+                        var timeInMilliSeconds = nextDate.getTime();
+                        var newTimeInMilliSeconds = timeInMilliSeconds + ((1000 * 60 * 60 * 24) * j);
+                        var nextRowDate = new Date(newTimeInMilliSeconds);
+
+                        
+
+                        var row = {
+                            time: nextRowDate,
+                            CO2Removed: -10000,
+                            water: -10000,
+                            loss: -10000,
+                            mv75Loss: -10000,
+                            pm25Captured: -10000,
+                            pm03Captured: -10000,
+                            pm1Captured: -10000,
+                            totalFlow: -10000,
+                        }
+        
+                        data.push(row);
+                    }
+                }
+            }
+        }
+
+        //sort so non valid records will be put in the right place.
+        data.sort(function(current, next) {
+            return current.time.getTime() - next.time.getTime();
+        });
+
+        data.total = totals
+        
+        
+        return data;
+    }   
+    if(general.page == "forward") {
+          
+        var initialDataLength = data.length;
+       
+        for (let i = 0; i < initialDataLength; i++) {
+            data[i].time = new Date(data[i].date);
+            if(i + 1 < initialDataLength) {
+
+                nextRowDate = new Date(data[i+1].date);
+                
+                var timeDifference = Math.abs(data[i].time - nextRowDate);
+                var dayDifference = Math.ceil(timeDifference / (1000 * 60 * 60 * 24));
+                
+                
+                if(dayDifference > 1 ) { //fill array with non valid records 
+
+                    var nextDate = new Date(data[i].time);
+
+                    for(j = 1; j < dayDifference; j++) {
+
+                        var timeInMilliSeconds = nextDate.getTime();
+                        var newTimeInMilliSeconds = timeInMilliSeconds + ((1000 * 60 * 60 * 24) * j);
+                        var nextRowDate = new Date(newTimeInMilliSeconds);
+
+                        
+
+                        var row = {
+                            time: nextRowDate,
+                            co2: -10000,
+                            flow: -10000,
+                            hum: -10000,
+                            t1: -10000,
+                            dp: -10000,
+                        }
+        
+                        data.push(row);
+                    }
+                }
+            }
+        }
+         //sort so non valid records will be put in the right place.
+         data.sort(function(current, next) {
+            return current.time.getTime() - next.time.getTime();
+        });
+        return data;     
+    }
+    if(general.page == "monitor"){
+        data.total = {};
+        data.total.PM25_removed = 0;
+        for (let i = 0; i < data.length; i++) {
+            var dateString = data[i].datetime;
+            data[i].time = new Date(dateString.replace(' ', 'T')); 
+            data[i].CO2 = +data[i].CO2;
+            data[i].T1 = +data[i].T1;
+            data[i].dp_sh = +data[i].dp_sh;
+            data[i].hum_sh = +data[i].hum_sh;
+            data[i].D1_PM25_st = +data[i].D1_PM25_st;
+            data[i].D1_PM1_st = +data[i].D1_PM1_st;
+            data[i].D1_PM10_st = +data[i].D1_PM10_st;
+        }
+        return data;  
+    }
+}

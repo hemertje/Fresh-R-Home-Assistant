@@ -10,5 +10,5 @@
   "codeowners": [],
   "iot_class": "cloud_polling",
   "config_flow": true,
-  "icon": "custom:fresh-r"
+  "icon": "mdi:air-purifier"
 }

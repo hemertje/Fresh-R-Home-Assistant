@@ -1,0 +1,64 @@
+EXACTE LOG ANALYSE - 14 maart 2026, 09:34
+================================================
+
+POGING 1:
+---------
+Session Token: 16a68d0ccd1f0440f8db...
+
+Cookie Jar State:
+  Cookie: PHPSESSID = dt8ph0jd81hedegdrf8movhcs6 (domain: fresh-r.me)
+  Cookie: sess_token = 16a68d0ccd1f0440f8db859a113c8aad9b4a28770d620402274272f3bc38277b (domain: dashboard.bw-log.com)
+
+Response: {"success":false,"reason":"Invalid request. Not authenticated."}
+
+
+POGING 2:
+---------
+Session Token: 361e2403933753ff29c6...
+
+Cookie Jar State:
+  Cookie: PHPSESSID = dt8ph0jd81hedegdrf8movhcs6 (domain: fresh-r.me)
+  Cookie: sess_token = 361e2403933753ff29c6fb3c1c75069023c0ec004f350db2392b683257680e24 (domain: dashboard.bw-log.com)
+
+Response: {"success":false,"reason":"Invalid request. Not authenticated."}
+
+
+POGING 3:
+---------
+Session Token: f3656008a28b2c62239c...
+
+Cookie Jar State:
+  Cookie: PHPSESSID = dt8ph0jd81hedegdrf8movhcs6 (domain: fresh-r.me)
+  Cookie: sess_token = f3656008a28b2c62239cff6e6b98f783d7feb0d911253168dac1cdc13da578e7 (domain: dashboard.bw-log.com)
+
+Response: {"success":false,"reason":"Invalid request. Not authenticated."}
+
+
+FEITEN:
+=======
+1. Login slaagt 3x (verschillende sess_tokens)
+2. Cookie jar bevat BEIDE cookies (PHPSESSID + sess_token)
+3. PHPSESSID blijft HETZELFDE (dt8ph0jd81hedegdrf8movhcs6)
+4. sess_token VERANDERT elke poging
+5. API geeft 3x "Not authenticated"
+
+ONTBREKENDE DATA IN LOGS:
+==========================
+❌ Request Headers die DAADWERKELIJK verstuurd worden
+❌ Welke Cookie header naar API gaat
+❌ Of PHPSESSID wordt meegestuurd naar API
+
+CODE VOOR FIX:
+==============
+Regel 908: Request Headers logging toegevoegd
+Regel 894-899: Alle cookies uit jar in Cookie header
+
+DEZE LOGGING MOET NU TONEN:
+============================
+Request Headers: {
+  "Content-Type": "...",
+  "Cookie": "PHPSESSID=dt8ph0jd81hedegdrf8movhcs6; sess_token=..."
+}
+
+ALS DIT ER NIET STAAT = CODE BUG
+ALS DIT ER WEL STAAT MAAR API ZEGT NOG STEEDS "Not authenticated" = API VERWACHT IETS ANDERS

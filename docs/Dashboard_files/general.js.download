@@ -1,0 +1,28 @@
+/**
+ * This file contains general functions
+ */
+
+function getCookies() {
+
+    var cookieString = document.cookie;
+
+    cookieString = cookieString.split(';');
+
+    var cookies = {}
+
+    for (let i = 0; i < cookieString.length; i++) {
+
+        var cookie = cookieString[i].split("=");
+
+        var cookieKey = cookie[0].replace(" ", "");
+        var cookieValue = cookie[1];
+
+        cookies[cookieKey] = cookieValue;
+    }
+
+    return cookies;
+}
+
+function timeSnap(t, interval, minTimeValue) {
+    return new Date(Math.round((t - minTimeValue) / interval) * interval + minTimeValue);
+}

@@ -1,0 +1,18 @@
+.not-found-container {
+    width: 600px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    margin-top: 250px;
+}
+
+.not-found-page {
+    font-size: 42px;
+    text-align: center;
+}
+
+.go-back-btn {
+    font-size: 18px;
+    text-decoration: none;
+    text-align: center;
+}

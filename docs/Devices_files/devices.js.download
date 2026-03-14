@@ -1,0 +1,654 @@
+$(document).ready(function() {
+
+    // Constants
+    const CO2_THRESHOLDS = {
+        BAD: 2400,
+        MEDIOCRE: 1200,
+        GOOD: 1000
+    };
+
+    const DEVICE_TYPES = {
+        FORWARD: 'forward',
+        MONITOR: 'monitor',
+        EXTRACT: 'Fresh-R Extract',
+        FRESH_R: 'fresh-r'
+    };
+
+    const STATUS_CLASSES = {
+        BAD: 'status-color-bad',
+        MEDIOCRE: 'status-color-mediocre',
+        OK: 'status-color-ok',
+        NO_STATUS: 'no-status'
+    };
+
+    const EXTRACT_DATA_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+    const FLOW_CALIBRATION_THRESHOLD = 200;
+    const FLOW_CALIBRATION_OFFSET = 700;
+    const FLOW_CALIBRATION_DIVISOR = 30;
+    const FLOW_CALIBRATION_BASE = 20;
+    const FORWARD_FLOW_DIVISOR = 3;
+
+    if ($('main').is('#devices-page')) {
+        const cookies = getCookies();
+        if (typeof cookies['token_failure'] !== 'undefined') {
+            showLoginFailure();
+            clearTokenFailureCookie();
+        } else {
+            showLoadingSpinner();
+            
+            const sessionToken = cookies["sess_token"];
+            const timezoneOffset = getTimezoneOffset();
+
+            getDevices(sessionToken, timezoneOffset);
+        }        
+    }
+
+    // ========== Utility Functions ==========
+
+    /**
+     * Shows login failure message to the user
+     */
+    function showLoginFailure() {
+        $('.devices-container').append(`
+            <div class="failure-card">
+                <h3>We were not able to retrieve your devices. Please login again.</h3> 
+                <a class="login-redirect-btn" href="https://fresh-r.me">login</a>
+            </div>
+        `);
+    }
+
+    /**
+     * Clears the token failure cookie
+     */
+    function clearTokenFailureCookie() {
+        document.cookie = 'token_failure=;expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    }
+
+    /**
+     * Shows loading spinner
+     */
+    function showLoadingSpinner() {
+        $('.devices-container').append(`
+            <div class="fa-4x spinner-container">
+                <i class="fas fa-circle-notch fa-spin"></i>
+            </div>
+        `);
+    }
+
+    /**
+     * Gets timezone offset formatted for the API
+     */
+    function getTimezoneOffset() {
+        const date = new Date();
+        let offset = date.getTimezoneOffset();
+        return offset.toString().replace("-", ""); // API doesn't need minus
+    }
+
+    /**
+     * Determines CO2 status class based on CO2 value
+     */
+    function getCO2StatusClass(co2Value) {
+        if (co2Value == null || co2Value === "-") {
+            return STATUS_CLASSES.NO_STATUS;
+        }
+        if (co2Value >= CO2_THRESHOLDS.BAD) {
+            return STATUS_CLASSES.BAD;
+        }
+        if (co2Value >= CO2_THRESHOLDS.MEDIOCRE) {
+            return STATUS_CLASSES.MEDIOCRE;
+        }
+        return STATUS_CLASSES.OK;
+    }
+
+    /**
+     * Calculates relative humidity adjusted for temperature
+     * Uses Magnus-Tetens formula for saturation vapor pressure
+     */
+    function calculateAdjustedHumidity(humidity, dewPoint, targetTemp) {
+        // Validate inputs
+        if (humidity == null || dewPoint == null || targetTemp == null || 
+            isNaN(humidity) || isNaN(dewPoint) || isNaN(targetTemp)) {
+            return humidity; // Return original humidity if calculation not possible
+        }
+
+        const T_sh = 243.04 * (
+            ((17.625 * dewPoint) / (243.04 + dewPoint)) - Math.log(humidity / 100)
+        ) / (
+            17.625 + Math.log(humidity / 100) - ((17.625 * dewPoint) / (243.04 + dewPoint))
+        );
+        
+        const adjustedHumidity = humidity * Math.exp(
+            4283.78 * (T_sh - targetTemp) / (243.12 + T_sh) / (243.12 + targetTemp)
+        );
+        
+        const result = Math.round(adjustedHumidity * 10) / 10;
+        
+        // Check if result is NaN
+        if (isNaN(result)) {
+            return Math.round(humidity * 10) / 10;
+        }
+        
+        return result;
+    }
+
+    /**
+     * Calibrates flow value based on sensor readings
+     */
+    function calibrateFlow(flowValue) {
+        if (flowValue > FLOW_CALIBRATION_THRESHOLD) {
+            return (flowValue - FLOW_CALIBRATION_OFFSET) / FLOW_CALIBRATION_DIVISOR + FLOW_CALIBRATION_BASE;
+        }
+        return flowValue;
+    }
+
+    // ========== Device Card Generation ==========
+
+    /**
+     * Generates HTML for a device card
+     */
+    function generateDeviceCard(unit, sysInfo, currentData, deviceType, statusClass) {
+        const serial = unit.id;
+        const room = sysInfo.room;
+        const type = sysInfo.type;
+
+        let deviceValuesHTML = '';
+        let linksHTML = '';
+
+        if (deviceType === DEVICE_TYPES.MONITOR) {
+            deviceValuesHTML = generateMonitorValuesHTML(currentData);
+        } else if (deviceType === DEVICE_TYPES.FORWARD || deviceType === DEVICE_TYPES.FRESH_R) {
+            deviceValuesHTML = generateForwardFreshRValuesHTML(currentData, deviceType);
+        }
+
+        linksHTML = generateDeviceLinksHTML(serial, deviceType);
+
+        return `
+            <div class="device-card">
+                <div class="device-card-row device-card-header">
+                    <h2 class="device-type">${type}</h2>
+                    <div class="device-status ${statusClass}"></div>
+                </div>
+                <div class="device-card-row device-room-container">
+                    <span current-room-value="${room}" serial="${serial}" class="room-label">${room}</span>
+                    <i class='edit-icon fas fa-pen'></i>
+                </div>
+                ${deviceValuesHTML}
+                ${linksHTML}
+            </div>
+        `;
+    }
+
+    /**
+     * Generates HTML for monitor device values
+     */
+    function generateMonitorValuesHTML(data) {
+        return `
+            <div class="device-values-container">
+                <span class="values-label">current</span>
+                <ul class="device-average-values">
+                    <li class="device-value oxygen-color">${data.co2} ppm</li>
+                    <li class="device-value humidity-color">${data.hum} RH%</li>
+                    <li class="device-value dust-color">${data.d1_25} µg/m3</li>
+                </ul>
+                <ul class="device-average-values">
+                    <li class="device-value t1-color">${data.temp} °C</li>
+                </ul>
+            </div>
+        `;
+    }
+
+    /**
+     * Generates HTML for forward/fresh-r device values
+     */
+    function generateForwardFreshRValuesHTML(data, deviceType) {
+        const dustHTML = deviceType === DEVICE_TYPES.FRESH_R 
+            ? `<li class="device-value dust-color">${data.d5_25} µg/m3</li>` 
+            : '';
+
+        return `
+            <div class="device-values-container">
+                <span class="values-label">current</span>
+                <ul class="device-average-values">
+                    <li class="device-value oxygen-color">${data.co2} ppm</li>
+                    <li class="device-value humidity-color">${data.hum} RH%</li>
+                    ${dustHTML}
+                </ul>
+                <ul class="device-average-values">
+                    <li class="device-value t1-color">${data.t1} °C</li>
+                    <li class="device-value t2-color">${data.t2} °C</li>
+                    <li class="device-value flow-color">${data.flow} m³/h</li>
+                </ul>
+            </div>
+        `;
+    }
+
+    /**
+     * Generates HTML for device links
+     */
+    function generateDeviceLinksHTML(serial, deviceType) {
+        return `
+            <div class="device-card-row">
+                <a href="/?page=report&device-type=${deviceType}&serial=${serial}" class="device-link">Report <i class="fas fa-arrow-right"></i></a>
+                <a href="/?page=dashboard&device-type=${deviceType}&serial=${serial}" class="device-link">Dashboard <i class="fas fa-arrow-right"></i></a>
+            </div>
+        `;
+    }
+
+    /**
+     * Generates HTML for Extract device card (special case with external API data)
+     */
+    function generateExtractDeviceCard(unit, sysInfo, extractData, sessionToken) {
+        const serial = unit.id;
+        const room = sysInfo.room;
+        const type = sysInfo.type;
+
+        let statusClass, co2, hum, temp, flow;
+
+        const isDataFresh = extractData && 
+            (Date.now() - new Date(extractData.timestamp)) < EXTRACT_DATA_MAX_AGE_MS;
+
+        if (isDataFresh) {
+            co2 = extractData.data.co2 ?? "-";
+            hum = extractData.data.humidity ?? "-";
+            temp = extractData.data.temperature ?? "-";
+            flow = extractData.data.flow ?? "-";
+            statusClass = co2 >= CO2_THRESHOLDS.GOOD ? STATUS_CLASSES.BAD : STATUS_CLASSES.OK;
+        } else {
+            co2 = hum = temp = flow = "-";
+            statusClass = STATUS_CLASSES.NO_STATUS;
+        }
+
+        return `
+            <div class="device-card">
+                <div class="device-card-row device-card-header">
+                    <h2 class="device-type">${type}</h2>
+                    <div class="device-status ${statusClass}"></div>
+                </div>
+                <div class="device-card-row device-room-container">
+                    <span current-room-value="${room}" serial="${serial}" class="room-label">${room}</span>
+                    <i class='edit-icon fas fa-pen'></i>
+                </div>
+                <div class="device-values-container">
+                    <span class="values-label">current</span>
+                    <ul class="device-average-values">
+                        <li class="device-value oxygen-color">${co2} ppm</li>
+                        <li class="device-value humidity-color">${hum} RH%</li>
+                    </ul>
+                    <ul class="device-average-values">
+                        <li class="device-value t1-color">${temp} °C</li>
+                        <li class="device-value flow-color">${flow} m³/h</li>
+                    </ul>
+                </div>
+                <div class="device-card-row">
+                    <a href="http://dashboard.fresh-r.dev/?serial=${serial}&token=${encodeURIComponent(sessionToken)}" style="width: 100%;" class="device-link">Dashboard <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+        `;
+    }
+
+    // ========== Data Processing Functions ==========
+
+    /**
+     * Processes current device data and normalizes values
+     */
+    function processCurrentData(currentData, sysInfo, deviceType) {
+        const data = { ...currentData };
+
+        // Process CO2
+        data.co2 = data.co2 ?? "-";
+
+        // Process humidity with temperature adjustment
+        if (data.hum != null && data.dp != null) {
+            let targetTemp;
+            
+            if (deviceType === DEVICE_TYPES.FORWARD) {
+                targetTemp = data.temp;
+            } else if (deviceType === DEVICE_TYPES.FRESH_R) {
+                targetTemp = data.t1;
+            }
+            
+            if (targetTemp != null) {
+                // Convert to numbers to ensure proper calculation
+                const humidity = parseFloat(data.hum);
+                const dewPoint = parseFloat(data.dp);
+                const temp = parseFloat(targetTemp);
+                
+                if (!isNaN(humidity) && !isNaN(dewPoint) && !isNaN(temp)) {
+                    data.hum = calculateAdjustedHumidity(humidity, dewPoint, temp);
+                } else {
+                    // ...existing code...
+                    data.hum = !isNaN(humidity) ? Math.round(humidity * 10) / 10 : "-";
+                }
+            } else {
+                data.hum = !isNaN(parseFloat(data.hum)) ? Math.round(parseFloat(data.hum) * 10) / 10 : "-";
+            }
+        } else {
+            data.hum = "-";
+        }
+
+        // Process dust
+        data.d5_25 = data.d5_25 ?? "-";
+        data.d1_25 = data.d1_25 ?? "-";
+
+        // Process temperatures
+        data.t1 = data.t1 ?? "-";
+        data.t2 = data.t2 ?? "-";
+        data.temp = data.temp ?? "-";
+
+        // For forward devices, use temp sensor as t1
+        if (deviceType === DEVICE_TYPES.FORWARD) {
+            data.t1 = data.temp;
+        }
+
+        // Process flow
+        if (data.flow != null) {
+            if (deviceType === DEVICE_TYPES.FORWARD) {
+                data.flow = data.flow / FORWARD_FLOW_DIVISOR;
+            }
+            data.flow = calibrateFlow(data.flow);
+            data.flow = Math.round(data.flow * 10) / 10;
+        } else {
+            data.flow = "-";
+        }
+
+        return data;
+    }
+
+    /**
+     * Fetches Extract device data from external API
+     */
+    async function fetchExtractDevices(sessionToken) {
+        // ...existing code...
+        try {
+            const response = await $.ajax({
+                url: "https://api.fresh-r.dev/v1/dashboard/devices/all/status",
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + sessionToken
+                }
+            });
+
+            // ...existing code...
+            const extractDevices = {};
+            for (let device of response) {
+                extractDevices[device.serial_number] = device;
+            }
+            // ...existing code...
+            return extractDevices;
+        } catch (err) {
+            // ...existing code...
+            // ...existing code...
+            return {};
+        }
+    }
+
+    // ========== Main Device Fetching Function ==========
+
+    /**
+     * Main function to retrieve and display all devices
+     */
+    function getDevices(sessionToken, timezoneOffset) {
+        // ...existing code...
+        let currentRoomValue = '';
+
+        /**
+         * Binds event handler to edit room name
+         */
+        function bindLabelHandler() {
+            $(".edit-icon").click(function() {
+                currentRoomValue = $(this).prev().text();
+                const serial = $(this).prev().attr("serial");
+                const $parent = $(this).parent();
+
+                $(this).prev().remove();
+                $(this).remove();
+            
+                $parent.append(`<input serial='${serial}' class='room-input-field' placeholder='room of the unit' type='text'>`);
+                $parent.append("<button class='edit-room-value-btn'>save</button>");
+            
+                $(".room-input-field").focus();
+                bindInputHandler();
+            });
+        }
+
+        /**
+         * Binds event handlers for saving room name changes
+         */
+        function bindInputHandler() {
+            $(".edit-room-value-btn").click(function() {
+                updateRoomValue($(this).prev());
+                bindLabelHandler();
+            });
+
+            $(".room-input-field").keypress(function(e) {
+                if (e.which === 13) { // Enter key
+                    updateRoomValue($(this));
+                    bindLabelHandler();
+                }   
+            });
+        }
+
+        /**
+         * Updates room name via API and replaces input with label
+         */
+        function updateRoomValue($element) {
+            const $parent = $element.parent();
+            const roomValue = $element.val();
+            const serial = $element.attr("serial");
+            
+            // Update UI immediately
+            $parent.empty();
+            $parent.append(`<span serial='${serial}' class='room-label'>${roomValue}</span>`);
+            $parent.append("<i class='edit-icon fas fa-pen'></i>");
+
+            // Send update to server
+            const updateRequest = {
+                token: sessionToken,
+                tzoffset: timezoneOffset,
+                requests: {
+                    update: {
+                        request: "update-sysinfo",
+                        id: serial,
+                        fields: {
+                            room: {
+                                "old-value": currentRoomValue,
+                                "new-value": roomValue
+                            }
+                        }
+                    }
+                }
+            };
+
+            $.post('https://dashboard.bw-log.com/api.php?q=' + JSON.stringify(updateRequest));
+        }
+
+        /**
+         * Reverts the input field back to a label
+         */
+        function revertToLabel() {
+            const $input = $(".room-input-field");
+            const serial = $input.attr("serial");
+            const $parent = $input.parent();
+
+            $parent.empty();
+            $parent.append(`<span serial="${serial}" class='room-label'>${currentRoomValue}</span>`);
+            $parent.append("<i class='edit-icon fas fa-pen'></i>");
+
+            bindLabelHandler();
+        }
+
+        /**
+         * Remove input field and append label if clicked somewhere on the page except input field or edit-icon
+         */
+        $('body').click(function(evt) {   
+            if (!$(evt.target).hasClass('edit-icon') && !$(evt.target).hasClass('edit-room-value-btn') && !$(evt.target).hasClass("room-input-field")) {
+                if ($(".room-input-field").length > 0) {
+                    revertToLabel();
+                }
+            }
+        });
+
+        $('body').on('touchstart', function(evt) {  
+            if (!$(evt.target).hasClass('edit-icon') && !$(evt.target).hasClass('edit-room-value-btn') && !$(evt.target).hasClass("room-input-field")) {
+                if ($(".room-input-field").length > 0) {
+                    revertToLabel();
+                }
+            }
+        });
+
+        const userInfoRequest = {
+            tzoffset: timezoneOffset,
+            token: sessionToken,
+            requests: {
+                user_info: {
+                    request: "userinfo",
+                    fields: ["first_name", "last_name", "gender", "locale", "type"]
+                },
+                user_units: {
+                    request: "syssearch",
+                    role: "user",
+                    fields: ["units"]
+                }
+            }
+        };
+
+        // Step 1: Fetch user info and units
+        $.post('https://dashboard.bw-log.com/api.php?q=' + JSON.stringify(userInfoRequest), function(data) {
+            const userData = JSON.parse(data);
+            const units = userData.user_units.units;
+
+            // Step 2: Build requests for device system info
+            const sysInfoRequests = {};
+            for (let unit of units) {
+                sysInfoRequests[unit.id] = {
+                    request: "sysinfo",
+                    id: unit.id,
+                    fields: ["type", "room"]
+                };
+            }
+            
+            const sysInfoRequestParams = {
+                tzoffset: timezoneOffset,
+                token: sessionToken,
+                requests: sysInfoRequests
+            };
+
+            // Step 3: Fetch device system info
+            $.post("https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(sysInfoRequestParams), function(data) {
+                const sysInfoData = JSON.parse(data);
+                // Step 4: Fetch Extract devices data
+                fetchExtractDevices(sessionToken).then(function(extractDevices) {
+
+                // Step 5: Build requests for current device values
+                const currentValueRequests = {};
+                const deviceTypes = {};
+
+                for (let unit of units) {
+                    const unitId = unit.id;
+                    const deviceType = sysInfoData[unitId].type;
+
+                    if (deviceType.includes("forward")) {
+                        deviceTypes[unitId] = DEVICE_TYPES.FORWARD;
+                        currentValueRequests[unitId + "_current"] = {
+                            request: "forward-now",
+                            serial: unitId,
+                            fields: ["date", "t1", "t2", "t3", "t4", "flow", "co2", "hum", "dp", "temp"]
+                        };
+                    } 
+                    else if (deviceType.includes("monitor")) {
+                        deviceTypes[unitId] = DEVICE_TYPES.MONITOR;
+                        currentValueRequests[unitId + "_current"] = {
+                            request: "monitor-now",
+                            serial: unitId,
+                            fields: ["date", "co2", "hum", "dp", "temp", "d1_25"]
+                        };
+                    }
+                    else if (deviceType.includes("Fresh-r Extract")) {
+                        deviceTypes[unitId] = DEVICE_TYPES.EXTRACT;
+                        // Extract devices use external API, handle separately
+                        const cardHTML = generateExtractDeviceCard(unit, sysInfoData[unitId], extractDevices[unitId], sessionToken);
+                        $(".devices-container").append(cardHTML);
+                    } 
+                    else {
+                        deviceTypes[unitId] = DEVICE_TYPES.FRESH_R;
+                        currentValueRequests[unitId + "_current"] = {
+                            request: "fresh-r-now",
+                            serial: unitId,
+                            fields: ["t1", "t2", "t3", "t4", "flow", "co2", "hum", "dp", "d5_25", "d4_25", "d4_03", "d5_03", "d5_1", "d4_1", "d1_25", "d1_03", "d1_1"]
+                        };
+                    }
+                }
+
+                    const currentValueRequestParams = {
+                        tzoffset: timezoneOffset,
+                        token: sessionToken,
+                        requests: currentValueRequests
+                    };
+                    
+                    // Step 6: Fetch current device values and render cards
+                    $.post("https://dashboard.bw-log.com/api.php", {q: JSON.stringify(currentValueRequestParams)}).done(function(data) {
+                    const currentData = JSON.parse(data);
+                    $(".spinner-container").remove();
+                   
+                    // Step 7: Process and render each device
+                    for (let unit of units) {
+                        try {
+                            const unitId = unit.id;
+                            const deviceType = deviceTypes[unitId];
+                            
+                            // Skip Extract devices (already rendered) and missing data
+                            if (deviceType === DEVICE_TYPES.EXTRACT || !currentData[unitId + "_current"]) {
+                                continue;
+                            }
+
+                            // Process device data
+                            const processedData = processCurrentData(
+                                currentData[unitId + "_current"], 
+                                sysInfoData[unitId], 
+                                deviceType
+                            );
+
+                            // Determine status
+                            const statusClass = getCO2StatusClass(processedData.co2);
+
+                            // Generate and append device card
+                            const cardHTML = generateDeviceCard(
+                                unit, 
+                                sysInfoData[unitId], 
+                                processedData, 
+                                deviceType, 
+                                statusClass
+                            );
+                            $(".devices-container").append(cardHTML);
+                        }
+                        catch(err) {
+                            console.error("Error loading device " + unit.id + ": " + err.message);
+                            console.error('Error details:', err);
+                        }
+                    }
+                    
+                        bindLabelHandler();
+                    }).fail(function(xhr, status, error) {
+                        console.error('Step 6 FAILED: Error fetching current device values');
+                        console.error('Status:', status);
+                        console.error('Error:', error);
+                        console.error('Response:', xhr.responseText);
+                    });
+                }).catch(function(error) {
+                    console.error('Step 4 FAILED: Error fetching Extract devices');
+                    console.error('Error:', error);
+                });
+            }).fail(function(xhr, status, error) {
+                console.error('Step 3 FAILED: Error fetching sysinfo');
+                console.error('Status:', status);
+                console.error('Error:', error);
+                console.error('Response:', xhr.responseText);
+            });
+        }).fail(function(xhr, status, error) {
+            console.error('Step 1 FAILED: Error fetching user info');
+            console.error('Status:', status);
+            console.error('Error:', error);
+            console.error('Response:', xhr.responseText);
+        });
+    }
+});

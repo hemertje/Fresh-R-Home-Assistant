@@ -50,7 +50,7 @@ SENSORS = {
     "t2":     ("t2",    "Outdoor Temperature",    "°C",      "temperature",    "measurement", "mdi:thermometer"),
     "t3":     ("t3",    "Supply Temperature",     "°C",      "temperature",    "measurement", "mdi:thermometer-chevron-up"),
     "t4":     ("t4",    "Exhaust Temperature",    "°C",      "temperature",    "measurement", "mdi:thermometer-chevron-down"),
-    "flow":   (None,    "Flow Rate",              "m³/h",    None,             "measurement", "custom:fresh-r"),
+    "flow":   (None,    "Flow Rate",              "m³/h",    None,             "measurement", "mdi:fan"),
     "co2":    ("co2",   "CO2",                    "ppm",     "carbon_dioxide", "measurement", "mdi:molecule-co2"),
     "hum":    ("hum",   "Humidity",               "%",       "humidity",       "measurement", "mdi:water-percent"),
     "dp":     ("dp",    "Dew Point",              "°C",      "temperature",    "measurement", "mdi:water-thermometer"),

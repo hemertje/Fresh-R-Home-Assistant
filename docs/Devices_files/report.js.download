@@ -1,0 +1,202 @@
+if($("main").is("#report-page")) {
+    var cookies = getCookies();
+    var sess_token = cookies["token"];
+    var dateFrom = new Date;
+    var dateTo = new Date;
+    var date = new Date();
+    var timezoneOffset = date.getTimezoneOffset();
+    var dateFormat = d3.timeFormat("%Y-%m-%d");
+    var urlParams = urlParameters();
+    var serial = urlParams["serial"];
+    var devicetype = urlParams["device-type"];
+    general.page = urlParams["device-type"];
+    general.chartName = '';
+
+    var linkToDashboard = window.location.search;
+    linkToDashboard = linkToDashboard.replace("report", "dashboard");
+    
+    $('.dashboard-link-to-report').css("background-color","white");
+    $('.report-link-to-dashboard').attr("href", 'index.php' + linkToDashboard);
+    
+    //from datepicker
+    var datepickerFrom = $('#report-datepicker-from').datepicker({ 
+        maxDate: new Date(dateFrom.setDate(dateFrom.getDate()-1)),
+        date: new Date(dateFrom),
+        dateFormat: "MM dd, yy",
+    }).on("change", function() {
+
+        dateFrom = new Date(this.value);  
+        tempDate = new Date(this.value);
+
+        datepickerTo.datepicker("option", "minDate", new Date(tempDate.setDate(tempDate.getDate()+1)));
+    });
+    
+    //to datepicker
+    var datepickerTo = $('#report-datepicker-to').datepicker({ 
+        maxDate: new Date(dateTo.setDate(dateTo.getDate()-1)),
+        minDate: new Date(dateTo),
+        date: new Date(dateTo),
+        dateFormat: "MM dd, yy"
+
+    }).on("change", function() {
+
+        dateTo = new Date(this.value);
+        tempDate = new Date(this.value);
+
+        datepickerFrom.datepicker("option", "maxDate", new Date(tempDate.setDate(tempDate.getDate()-1)));
+    });
+
+    //previous btn
+    $('.report-prev').click(function() {
+
+        var datepicker = $(this).next();
+
+        if($(datepicker).attr('id').includes("from")) { 
+
+            datepickerFrom.datepicker("setDate", new Date(dateFrom.setDate(dateFrom.getDate()-1)));
+
+            var tempDate = new Date(dateFrom);
+
+            datepickerTo.datepicker("option", "minDate", new Date(tempDate.setDate(tempDate.getDate()+1)));
+
+        } else {
+
+            dateTo = new Date(dateTo.setDate(dateTo.getDate()-1));
+
+            var tempDate = new Date(dateTo);
+            tempDate = new Date(tempDate.setDate(tempDate.getDate()-1));
+
+                                                        //86400000 = 6 days in milliseconds
+            if(dateTo.getTime() - dateFrom.getTime() < 86400000) {
+
+                datepickerTo.datepicker("option", "minDate", dateTo);
+
+                datepickerTo.datepicker("setDate", dateTo);
+
+                datepickerFrom.datepicker("setDate", tempDate);
+
+                dateFrom = tempDate;
+
+            } else {
+                datepickerTo.datepicker("setDate", dateTo);
+            }
+            
+            datepickerFrom.datepicker("option", "maxDate", tempDate);
+        }
+    });
+
+    $('#refresh_btn').click(function() {
+        $(".report-overview").hide(); 
+        $("#devices-page").hide();
+        $("#pdf").show(); 
+        $("#pdf_polar").hide();
+        $(".overview-btn").removeClass("active-overview");
+        $(this).addClass("active-overview");
+        
+        var chartName = $(this).attr("id");
+        general.chartName = chartName;
+        //console.log(general.chartName);
+        if(general.page == "monitor"){
+            displaydata(serial,dateFrom,dateTo);
+        }
+        if(general.page == "fresh-r"){
+            get_data(serial,dateFrom,dateTo);
+        }
+    });
+
+    //next btn
+    $('.report-next').click(function() {
+        
+        var datepicker = $(this).prev();
+
+        if($(datepicker).attr('id').includes("from")) {
+
+            var datepickerToDate = datepickerTo.datepicker("getDate").setHours(0,0,0,0);
+            var datepickerToMaxDate = datepickerTo.datepicker("option", "maxDate").setHours(0,0,0,0);
+
+            //86400000 = 6 days in milliseconds
+            if((datepickerToDate - dateFrom.setHours(0,0,0,0)) > 86400000 || datepickerToDate < datepickerToMaxDate) {
+
+                datepickerFrom.datepicker("setDate", new Date(dateFrom.setDate(dateFrom.getDate()+1)));
+
+                var tempDate = new Date(dateFrom);
+
+                datepickerTo.datepicker("option", "minDate", new Date(tempDate.setDate(tempDate.getDate()+1)));
+
+                dateTo = tempDate;
+            }
+
+        } else {
+
+            datepickerTo.datepicker("setDate", new Date(dateTo.setDate(dateTo.getDate()+1)));
+
+            var tempDate = new Date(dateTo);
+
+            datepickerFrom.datepicker("option", "maxDate", new Date(tempDate.setDate(tempDate.getDate()-1)));
+        }
+    });
+
+
+    initialDate = new Date;
+    initialDate.setDate(initialDate.getDate()-1);
+    datepickerTo.datepicker("setDate", initialDate); 
+
+    initialDate.setDate(initialDate.getDate()-1);
+    datepickerFrom.datepicker("setDate", initialDate);
+
+    function urlParameters() {
+
+        var parameters = window.location.search.substring(1);    
+        var requestSegments = parameters.split("&");
+
+        urlParameters = {}
+
+        for(var i = 0; i < requestSegments.length; i++) {
+            
+            var urlParameter = requestSegments[i].split("=");
+            urlParameters[urlParameter[0]] = urlParameter[1];
+        }
+
+        return urlParameters;
+    }
+
+    
+
+    //overview buttons
+    $("#report_2").click(function() {   
+        $(".report-overview").hide(); 
+        $("#devices-page").hide();
+        $("#pdf").show(); 
+        $("#pdf_polar").hide();
+        $(".overview-btn").removeClass("active-overview");
+        $(this).addClass("active-overview");
+        
+        var chartName = $(this).attr("id");
+        general.chartName = chartName;
+        //console.log(general.chartName);
+        if(general.page == "monitor"){
+            displaydata(serial,dateFrom,dateTo);
+        }
+        if(general.page == "fresh-r"){
+            get_data(serial,dateFrom,dateTo);
+        }
+    });
+
+    $(".report-overview").hide(); 
+    $("#devices-page").hide();
+    $("#pdf").show(); 
+    $("#pdf_polar").hide();
+    $(".overview-btn").removeClass("active-overview");
+    $(this).addClass("active-overview");
+    
+    var chartName = $(this).attr("id");
+    general.chartName = chartName;
+    //console.log(general.chartName);
+    if(general.page == "monitor"){
+        displaydata(serial,dateFrom,dateTo);
+    }
+    if(general.page == "fresh-r"){
+        get_data(serial,dateFrom,dateTo);
+    }
+   
+}

@@ -1,0 +1,23 @@
+/*general stylesheet*/
+
+body {
+    margin: 0;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 400;
+    background-color: #f2f2f2;
+}
+
+.main-content {
+    width: calc(100%);
+    height: calc(100% - 50px);
+    position: absolute;
+    display: flex;
+    align-items: stretch;
+}
+
+@media only screen and (max-width: 768px) {  
+
+    .main-content {
+        display: block;
+    }
+}

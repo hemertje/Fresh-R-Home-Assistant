@@ -1,0 +1,749 @@
+// ============================================================================
+// DASHBOARD DATA - Fetching and Formatting Functions
+// ============================================================================
+
+// ====================================================================
+// CONSTANTS
+// ====================================================================
+
+const REQUEST_FIELDS = {
+    FRESH_R: [
+        "date", "t1", "t2", "t3", "t4", "flow", "co2", "hum", "dp",
+        "d5_25", "d4_25", "d4_03", "d5_03", "d5_1", "d4_1", "d1_25", "d1_03", "d1_1"
+    ],
+    FORWARD: ["date", "temp", "flow", "co2", "hum", "dp"],
+    MONITOR: ["date", "temp", "dp", "co2", "hum", "d1_25", "d1_1", "d1_03", "d1_10"],
+    TOTALS: ["mv75Loss", "totalFlow", "loss", "CO2Removed", "WaterVaporOut", "WaterLiquidOut"]
+};
+
+const PHYSICS_CONSTANTS = {
+    AIR_HEAT_CAPACITY: 1212, // J/(m³·K)
+    AIR_DENSITY: 1.2, // kg/m³
+    WATER_CONVERSION: 0.0062, // g/kg conversion factor
+    SATURATION_BASE: 610.78, // Pa
+    MAGNUS_A: 17.2694,
+    MAGNUS_B: 238.3,
+    INTERVAL_SECONDS: 600, // 10 minutes
+    REFERENCE_FLOW: 75 // m³/h for mechanical ventilation
+};
+
+const MISSING_DATA_VALUE = -10000;
+
+// ====================================================================
+// DATA FETCHING FUNCTIONS
+// ====================================================================
+
+/**
+ * Fetches 10-minute data from dashboard API + current data
+ */
+function fetchData(date, device) {
+    const timezoneOffset = new Date(date).getTimezoneOffset().toString().replace("-", "");
+    const cookies = getCookies();
+    const token = cookies["sess_token"];
+    const formattedDate = date.replace(/-/g, "");
+
+    if (general.page === "fresh-r") {
+        return fetchFreshRData(token, timezoneOffset, formattedDate, device);
+    } else if (general.page === "forward") {
+        return fetchForwardData(token, timezoneOffset, formattedDate, device);
+    } else if (general.page === "monitor") {
+        return fetchMonitorData(token, timezoneOffset, formattedDate, device);
+    }
+}
+
+function fetchFreshRData(token, timezoneOffset, date, device) {
+    const request = {
+        token: token,
+        tzoffset: timezoneOffset,
+        requests: {
+            "chart-data": {
+                request: "fresh-r-day",
+                serial: device,
+                request_date: date,
+                fields: REQUEST_FIELDS.FRESH_R
+            },
+            "data-totals": {
+                request: "fresh-r-sum-day",
+                serial: device,
+                request_date: date,
+                fields: REQUEST_FIELDS.TOTALS
+            }
+        }
+    };
+
+    const endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+
+    return d3.json(endpoint, { method: "POST" })
+        .then(function(data) {
+            return appendCurrentData(data, token, timezoneOffset, device, date);
+        });
+}
+
+function appendCurrentData(data, token, timezoneOffset, device, requestedDate) {
+    const currentRequest = {
+        token: token,
+        tzoffset: timezoneOffset,
+        requests: {
+            "current-data": {
+                request: "fresh-r-now",
+                serial: device,
+                fields: REQUEST_FIELDS.FRESH_R
+            }
+        }
+    };
+
+    const currentEndpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(currentRequest);
+
+    return d3.json(currentEndpoint, { method: "POST" })
+        .then(function(currentResponse) {
+            console.log("Current response:", currentResponse);
+            
+            if (currentResponse && currentResponse["current-data"] && data["chart-data"] && data["chart-data"].length > 0) {
+                const currentData = currentResponse["current-data"];
+                const currentPoint = Array.isArray(currentData) ? currentData[0] : currentData;
+                
+                if (currentPoint && isToday(requestedDate)) {
+                    const lastDataPoint = data["chart-data"][data["chart-data"].length - 1];
+                    const newDate = addMinutes(new Date(lastDataPoint.date), 10);
+                    
+                    currentPoint.date = formatDateTime(newDate);
+                    
+                    console.log("✅ Current data before append:", currentPoint);
+                    console.log("Chart-data length before:", data["chart-data"].length);
+                    console.log("Last date:", lastDataPoint.date, "→ New date:", currentPoint.date);
+                    
+                    data["chart-data"].push(currentPoint);
+                    
+                    console.log("Chart-data length after:", data["chart-data"].length);
+                    console.log("✅ Added current data:", currentPoint.date, currentPoint);
+                } else {
+                    console.log("ℹ️ Skipping current data - not viewing today's data");
+                }
+            } else {
+                console.warn("❌ No current-data found in response");
+            }
+
+            return data;
+        });
+}
+
+function fetchForwardData(token, timezoneOffset, date, device) {
+    const request = {
+        token: token,
+        tzoffset: timezoneOffset,
+        requests: {
+            "chart-data": {
+                request: "forward-day",
+                serial: device,
+                request_date: date,
+                fields: REQUEST_FIELDS.FORWARD
+            }
+        }
+    };
+    
+    const endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+    return d3.json(endpoint, { method: "POST" });
+}
+
+function fetchMonitorData(token, timezoneOffset, date, device) {
+    const request = {
+        token: token,
+        tzoffset: timezoneOffset,
+        requests: {
+            "chart-data": {
+                request: "monitor-day",
+                serial: device,
+                request_date: date,
+                fields: REQUEST_FIELDS.MONITOR
+            }
+        }
+    };
+    
+    const endpoint = "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(request);
+    return d3.json(endpoint, { method: "POST" });
+}
+// ====================================================================
+// UTILITY FUNCTIONS
+// ====================================================================
+
+function isToday(dateStr) {
+    const today = new Date();
+    const todayStr = today.getFullYear().toString() + 
+                     String(today.getMonth() + 1).padStart(2, '0') + 
+                     String(today.getDate()).padStart(2, '0');
+    return dateStr === todayStr;
+}
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function formatDateTime(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function formatDate(date) {
+    const d = new Date(date);
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const year = d.getFullYear();
+
+    return [year, month, day].join("-");
+}
+
+function calculateSaturationPressure(temp) {
+    if (temp > 0) {
+        return PHYSICS_CONSTANTS.SATURATION_BASE * 
+               Math.exp((temp / (temp + PHYSICS_CONSTANTS.MAGNUS_B)) * PHYSICS_CONSTANTS.MAGNUS_A);
+    } else {
+        return Math.exp(-6140.4 / (273 + temp) + 28.916);
+    }
+}
+
+function calculateWaterContent(temp) {
+    const psat = calculateSaturationPressure(temp);
+    return PHYSICS_CONSTANTS.WATER_CONVERSION * psat;
+}
+
+// ====================================================================
+// USER DATA FETCHING
+// ====================================================================
+
+/**
+ * Fetches user data from dashboard API
+ */
+function getUserData(role, token, timezoneOffset) {
+    const requestParameters = {
+        tzoffset: 120,
+        token: token,
+        requests: {
+            user_info: {
+                request: "userinfo",
+                fields: ["first_name", "last_name", "gender", "locale", "type"]
+            },
+            user_units: {
+                request: "syssearch",
+                role: role,
+                fields: ["units"]
+            }
+        }
+    };
+
+    let data;
+    $.ajax({
+        url: "https://dashboard.bw-log.com/api.php?q=" + JSON.stringify(requestParameters),
+        async: false,
+        type: "post",
+        dataType: "json",
+        success: function(output) {
+            data = output;
+        }
+    });
+
+    return data;
+}
+
+// ====================================================================
+// DATA FORMATTING - Main Function
+// ====================================================================
+
+/**
+ * Formats dashboard data: converts string values to numbers, calculates derived values,
+ * and fills in missing data points to prevent chart anomalies.
+ */
+function formatData(data) {
+  const timeFormat = d3.timeParse("%Y-%m-%d %-H:%M:%S");
+  const chartdata = data["chart-data"];
+  const datatotals = data["data-totals"];
+  
+  console.log(chartdata);
+  
+  // Safety check - should not happen if caller validates data first
+  if (!chartdata || chartdata.length === 0) {
+    return data;
+  }
+  
+  const startInterval = new Date(chartdata[0].date);
+  const records = chartdata.length;
+  const endInterval = new Date(chartdata[records - 1].date);
+  const period = (endInterval - startInterval) / 1000; // Period in seconds
+
+  let dustPresent = undefined;
+  const initialLength = chartdata.length;
+  
+  // Accumulator variables for totals calculation
+  let ventLoss75 = 0;
+  let heatRecovered = 0;
+  let totalWattLoss = 0;
+  let waterLiquidTotal = 0; // Total liquid water from 00:00 to now or entire day
+  let waterTotal = 0; // Total water vapor from 00:00 to now or entire day
+  
+  // Calculate minimum T2 and water content for humidity calculations
+  const T2Min = +d3.min(chartdata, d => d.t2);
+  const T2MinPsat = calculateSaturationPressure(T2Min);
+  const T2MinWater = PHYSICS_CONSTANTS.WATER_CONVERSION * T2MinPsat; // g/kg, assume dew point of outside air doesn't change
+
+  // ====================================================================
+  // Process each data point
+  // ====================================================================
+  
+  for (let i = 0; i < initialLength; i++) {
+    chartdata[i].time = new Date(chartdata[i].date);
+    
+    if (general.page === "fresh-r") {
+      // Detect ESP (Electrostatic Precipitator) based on flow rate
+      if (chartdata[i].flow > 300) {
+        chartdata[i].esp = 1;
+      }
+      
+      if (general.chartName === "oxygen") {
+        chartdata[i].spike = +chartdata[i].co2;
+        if (chartdata[i].flow > 300) chartdata[i].flow = +(chartdata[i].flow - 700) / 30 + 20;
+        chartdata[i].surface = +chartdata[i].flow;
+        if (i > 0) {
+          start_interval = new Date(chartdata[i - 1].date);
+          end_interval = new Date(chartdata[i].date);
+          interval = (end_interval - start_interval) / 1000; // default is milliseconds
+          heatRecovered +=
+            ((chartdata[i].t4 - chartdata[i].t2) *
+              chartdata[i].flow *
+              interval *
+              1212) /
+            3600 /
+            3.6e6;
+          ventLoss75 +=
+            ((chartdata[i].t1 - chartdata[i].t2) * 75 * interval * 1212) /
+            3600 /
+            3.6e6; //in Joule
+          totalWattLoss +=
+            ((chartdata[i].t1 - chartdata[i].t4) *
+              chartdata[i].flow *
+              interval *
+              1212) /
+            3600 /
+            3.6e6;
+        } else {
+          interval = 600;
+        }
+
+        chartdata[i].loss =
+          (+(chartdata[i].t4 - chartdata[i].t2) * chartdata[i].flow * 1212) /
+          3600; // temperature gain of outside air
+        chartdata[i].mvLoss =
+          (+(chartdata[i].t1 - chartdata[i].t2) * 75 * 1212) / 3600; // 75 m^3/h is reference for mechenical ventilation flow
+        chartdata[i].WattLoss =
+          (+(chartdata[i].t1 - chartdata[i].t4) * chartdata[i].flow * 1212) /
+          3600;
+
+        if (chartdata[i].mvLoss < 0) {
+          chartdata[i].mvLoss = 0;
+        }
+
+        if (chartdata[i].loss < 0) {
+          chartdata[i].loss = 0;
+        }
+
+        chartdata[i].t2 = +chartdata[i].t2;
+        chartdata[i].t1 = +chartdata[i].t1;
+        chartdata[i].dp = +chartdata[i].dp;
+        chartdata[i].flow = +chartdata[i].flow;
+        chartdata[i].t4 = +chartdata[i].t4;
+        chartdata[i].spike2 = +chartdata[i].t1;
+      } else if (general.chartName == "humidity") {
+        if (chartdata[i].flow > 300) chartdata[i].flow = +(chartdata[i].flow - 700) / 30 + 20;
+        chartdata[i].dp = +chartdata[i].dp;
+        chartdata[i].t3 = +chartdata[i].t3;
+        chartdata[i].t2 = +chartdata[i].t2;
+        chartdata[i].t1 = +chartdata[i].t1;
+        chartdata[i].co2 = +chartdata[i].co2 / 10;
+        chartdata[i].rdp =
+          (+(chartdata[i].dp - chartdata[i].t2) /
+            (chartdata[i].t1 - chartdata[i].t2)) *
+          100;
+        if (chartdata[i].rdp < 0) chartdata[i].rdp = 0;
+
+        chartdata[i].hum_sh = +chartdata[i].hum;
+
+        chartdata[i].T_sh =
+          (+243.04 *
+            ((17.625 * chartdata[i].dp) / (243.04 + chartdata[i].dp) -
+              Math.log(chartdata[i].hum_sh / 100))) /
+          (17.625 +
+            Math.log(chartdata[i].hum_sh / 100) -
+            (17.625 * chartdata[i].dp) / (243.04 + chartdata[i].dp));
+        chartdata[i].dv =
+          +216.7 *
+          (((chartdata[i].hum_sh / 100.0) *
+            6.112 *
+            Math.exp(
+              (17.62 * chartdata[i].T_sh) / (243.12 + chartdata[i].T_sh)
+            )) /
+            (273.15 + chartdata[i].T_sh));
+        chartdata[i].hum_T1 =
+          +chartdata[i].hum *
+          Math.exp(
+            (4283.78 * (chartdata[i].T_sh - chartdata[i].t1)) /
+              (243.12 + chartdata[i].T_sh) /
+              (243.12 + chartdata[i].t1)
+          );
+
+        chartdata[i].spike = +chartdata[i].hum_T1;
+        chartdata[i].surface = +chartdata[i].dv;
+
+        chartdata[i].spike2 = +chartdata[i].t1;
+
+        dp_sh_Psat =
+          610.78 *
+          Math.exp((chartdata[i].dp / (chartdata[i].dp + 238.3)) * 17.2694); //Pa
+        dp_sh_water = 0.0062 * dp_sh_Psat; // g/kg
+
+        chartdata[i].water_liquid = 0; //ml/h
+        if (chartdata[i].t3 < chartdata[i].dp) {
+          T3_Psat =
+            610.78 *
+            Math.exp((chartdata[i].t3 / (chartdata[i].t3 + 238.3)) * 17.2694); //Pa
+          T3_water = 0.0062 * T3_Psat; // g/kg
+          if (dp_sh_water > T3_water)
+            chartdata[i].water_liquid =
+              (dp_sh_water - T3_water) * chartdata[i].flow * 1.2; // g/h 1.2 is mass of air in kg/m^3
+          if (i > 0) {
+            start_interval = new Date(chartdata[i - 1].date); // first moment of data range if cnt == 1
+            end_interval = new Date(chartdata[i].date);
+            interval = (end_interval - start_interval) / 1000; // interval in seconds between last two measurements
+
+            waterLiquidTotal += (chartdata[i].water_liquid / 3600) * interval; // g/h/3600 = g/s * interval
+            // g total over interval
+          }
+        }
+
+        water = (dp_sh_water - T2MinWater) * 1.2 * chartdata[i].flow; //      g/h
+        if (i > 0) {
+          waterTotal += (water / 3600) * interval;
+        }
+      } else if (
+        general.chartName == "dust" ||
+        general.chartName == "PM25" ||
+        general.chartName == "PM03"
+      ) {
+        if(!dustPresent){
+          if (chartdata[i].d4_25 > 0 || chartdata[i].d5_25 > 0 || chartdata[i].d1_03 > 0) {
+            dustPresent = i;
+          }
+        }
+
+        chartdata[i].spike2 = +chartdata[i].d1_25;
+        chartdata[i].spike = +chartdata[i].d5_25;
+        chartdata[i].surface = +chartdata[i].d4_25;
+        chartdata[i].difference_03 = +(chartdata[i].d4_03 - chartdata[i].d5_03);
+        if (isNaN(chartdata[i].d5_1)) {
+          chartdata[i].d5_1 = +0;
+          chartdata[i].d4_1 = +0;
+          chartdata[i].d1_1 = +0;
+          chartdata[i].d5_25 = +0;
+          chartdata[i].d4_25 = +0;
+          chartdata[i].d1_25 = +0;
+        } else {
+          chartdata[i].d5_1 = +chartdata[i].d5_1;
+          chartdata[i].d4_1 = +chartdata[i].d4_1;
+          chartdata[i].d1_1 = +chartdata[i].d1_1;
+          chartdata[i].d5_25 = +chartdata[i].d5_25;
+          chartdata[i].d4_25 = +chartdata[i].d4_25;
+          chartdata[i].d1_25 = +chartdata[i].d1_25;
+        }
+      }
+    } else if (general.page == "forward") {
+      if (general.chartName == "oxygen") {
+        chartdata[i].spike = +chartdata[i].co2;
+        chartdata[i].spike2 = +chartdata[i].temp;
+        chartdata[i].temp = +chartdata[i].temp;
+        if (chartdata[i].temp) chartdata[i].flow = +chartdata[i].flow;
+        if (location.search.split("serial=f")[1] != undefined)
+          chartdata[i].flow = chartdata[i].flow / 3; //esp forward
+        chartdata[i].t4 = +chartdata[i].t4;
+        chartdata[i].surface = +chartdata[i].flow;
+        chartdata[i].loss =
+          (+(chartdata[i].t4 - chartdata[i].t2) * chartdata[i].flow * 1212) /
+          3600; // temperature gain of outside air
+        chartdata[i].mvLoss =
+          (+(chartdata[i].t1 - chartdata[i].t2) * 75 * 1212) / 3600; // 75 m^3/h is reference for mechenical ventilation flow
+
+        if (chartdata[i].mvLoss < 0) {
+          chartdata[i].mvLoss = 0;
+        }
+
+        if (chartdata[i].loss < 0) {
+          chartdata[i].loss = 0;
+        }
+
+        chartdata[i].t2 = +chartdata[i].t2;
+        
+      } else if (general.chartName == "humidity") {
+        chartdata[i].t2 = +chartdata[i].t2;
+        chartdata[i].temp = +chartdata[i].temp;
+        chartdata[i].hum = +chartdata[i].hum;
+
+        chartdata[i].hum_sh = +chartdata[i].hum;
+
+        if (chartdata[i].hum_sh > 105) {
+          chartdata[i].dp = -10000;
+          chartdata[i].T_sh =
+            (+243.04 *
+              ((17.625 * chartdata[i].dp) / (243.04 + chartdata[i].dp) -
+                Math.log(chartdata[i].hum_sh / 100))) /
+            (17.625 +
+              Math.log(chartdata[i].hum_sh / 100) -
+              (17.625 * chartdata[i].dp) / (243.04 + chartdata[i].dp));
+          chartdata[i].hum_T1 = -10000;
+          chartdata[i].dv = -10000;
+          chartdata[i].spike = 0;
+          chartdata[i].surface = 0;
+        } else {
+          chartdata[i].dp = +chartdata[i].dp;
+          chartdata[i].T_sh =
+            (+243.04 *
+              ((17.625 * chartdata[i].dp) / (243.04 + chartdata[i].dp) -
+                Math.log(chartdata[i].hum_sh / 100))) /
+            (17.625 +
+              Math.log(chartdata[i].hum_sh / 100) -
+              (17.625 * chartdata[i].dp) / (243.04 + chartdata[i].dp));
+          chartdata[i].dv =
+            +216.7 *
+            (((chartdata[i].hum_sh / 100.0) *
+              6.112 *
+              Math.exp(
+                (17.62 * chartdata[i].T_sh) / (243.12 + chartdata[i].T_sh)
+              )) /
+              (273.15 + chartdata[i].T_sh));
+          chartdata[i].hum_T1 =
+            +chartdata[i].hum *
+            Math.exp(
+              (4283.78 * (chartdata[i].T_sh - chartdata[i].temp)) /
+                (243.12 + chartdata[i].T_sh) /
+                (243.12 + chartdata[i].temp)
+            );
+          chartdata[i].spike = +chartdata[i].hum_T1;
+          chartdata[i].surface = +chartdata[i].dv;
+        }
+
+        chartdata[i].spike2 = +chartdata[i].temp;
+      }
+    } else if (general.page == "monitor") {
+      if (true) {
+        if (general.chartName == "oxygen") {
+          chartdata[i].CO2 = +chartdata[i].co2;
+          chartdata[i].hum_sh = +chartdata[i].hum;
+          chartdata[i].T1 = +chartdata[i].temp;
+          chartdata[i].dp_sh = +chartdata[i].dp;
+          chartdata[i].D1_PM25_st = +chartdata[i].d1_25;
+          chartdata[i].dv = +-10000;
+          chartdata[i].hum_T1 = +chartdata[i].hum_sh;
+          chartdata[i].spike = +chartdata[i].CO2;
+          chartdata[i].spike2 = +chartdata[i].dp_sh;
+          chartdata[i].surface = +chartdata[i].T1;
+        } else if (general.chartName == "humidity") {
+          chartdata[i].CO2 = +chartdata[i].co2;
+          chartdata[i].hum_sh = +chartdata[i].hum;
+          chartdata[i].T1 = +chartdata[i].temp;
+          chartdata[i].dp_sh = +chartdata[i].dp;
+          chartdata[i].D1_PM25_st = +chartdata[i].d1_25;
+          chartdata[i].dv = +-10000;
+          chartdata[i].hum_T1 = +chartdata[i].hum_sh;
+          chartdata[i].spike = +chartdata[i].hum_T1;
+          chartdata[i].surface = +chartdata[i].dv;
+          chartdata[i].spike2 = +chartdata[i].T1;
+        } else if (general.chartName == "dust") {
+          chartdata[i].spike = +chartdata[i].d1_10;
+          chartdata[i].spike2 = +chartdata[i].d1_03;
+          chartdata[i].surface = +chartdata[i].d1_25;
+          chartdata[i].CO2 = +chartdata[i].co2;
+          chartdata[i].hum_sh = +chartdata[i].hum;
+          chartdata[i].T1 = +chartdata[i].temp;
+          chartdata[i].dp_sh = +chartdata[i].dp;
+          chartdata[i].D1_PM25_st = +chartdata[i].d1_25;
+          chartdata[i].D1_PM10_st = +chartdata[i].d1_10;
+          chartdata[i].D1_PM03_num = +chartdata[i].d1_03;
+          chartdata[i].D1_PM1_st = +chartdata[i].d1_1;
+        }
+      }
+    }
+
+    //adds data containing -100000 if data is missing to prevent weird spikes in polar graph.
+    if (i + 1 < initialLength) {
+      nextRowDate = new Date(chartdata[i + 1].date);
+
+      var timeDiffernce = Math.abs(chartdata[i].time - nextRowDate);
+      minuteDifference = Math.ceil(timeDiffernce / (1000 * 60) / 10);
+
+      if (general.page == "monitor" && i > 1) {
+        var b = i - 1;
+        nextRowDate = new Date(chartdata[b + 1].date);
+        //console.log(nextRowDate);
+        //console.log(chartdata[i-1].time);
+        var timeDiffernce = Math.abs(chartdata[b].time - nextRowDate);
+        minuteDifference = Math.ceil(timeDiffernce / (1000 * 60) / 10);
+        //console.log( minuteDifference);
+      }
+
+      if (minuteDifference > 1) {
+        //fill chartdataset with non valid chartdata to simulate the missing chartdata.
+
+        var currentDateTime = new Date(chartdata[i].date);
+        if (general.page == "monitor" && i > 1)
+          currentDateTime = new Date(chartdata[b].date);
+        for (j = 1; j < minuteDifference - 1; j++) {
+          var row = {};
+
+          var timeInMilliSeconds = currentDateTime.getTime();
+          var newTimeInMilliSeconds = timeInMilliSeconds + 1000 * 60 * 10 * j;
+          var nextRowDateTime = new Date(newTimeInMilliSeconds);
+
+          if (general.page == "fresh-r") {
+            row.time = nextRowDateTime;
+
+            if (general.chartName == "oxygen") {
+              row.spike = -10000;
+              row.spike2 = -10000;
+              row.surface = -10000;
+              row.loss = -10000;
+              row.mvLoss = -10000;
+              row.t2 = -10000;
+              row.t1 = -10000;
+              row.flow = -10000;
+              row.t4 = -10000;
+            } else if (general.chartName == "humidity") {
+              row.spike = -10000;
+              row.spike2 = -10000;
+              row.surface = -10000;
+              row.dp = -10000;
+              row.t2 = -10000;
+              row.t1 = -10000;
+              row.hum = -10000;
+              row.dv = -10000;
+            } else if (general.chartName == "dust") {
+              row.spike = -10000;
+              row.surface = -10000;
+              row.difference_03 = -10000;
+              row.d5_1 = -10000;
+              row.d4_1 = -10000;
+              row.d1_1 = -10000;
+              row.d5_25 = -10000;
+              row.d4_25 = -10000;
+              row.d1_25 = -10000;
+            } else {
+              row.spike = -10000;
+              row.surface = -10000;
+              row.loss = -10000;
+              row.mvLoss = -10000;
+              row.t2 = -10000;
+              row.t1 = -10000;
+              row.flow = -10000;
+              row.t4 = -10000;
+
+              row.spike = -10000;
+              row.surface = -10000;
+              row.dp = -10000;
+              row.t2 = -10000;
+              row.t1 = -10000;
+              row.hum = -10000;
+
+              row.spike = -10000;
+              row.surface = -10000;
+              row.difference_03 = -10000;
+              row.d5_1 = -10000;
+              row.d4_1 = -10000;
+              row.d1_1 = -10000;
+              row.d5_25 = -10000;
+              row.d4_25 = -10000;
+              row.d1_25 = -10000;
+            }
+          } else if (general.page == "forward") {
+            row.time = nextRowDateTime;
+
+            row.spike = -10000;
+            row.spike2 = -10000;
+            row.surface = -10000;
+            row.loss = -10000;
+            row.mvLoss = -10000;
+            row.temp = -10000;
+            row.t2 = -10000;
+            row.t1 = -10000;
+            row.flow = -10000;
+            row.t4 = -10000;
+
+            row.spike = -10000;
+            row.surface = -10000;
+            row.dp = -10000;
+            row.t2 = -10000;
+            row.t1 = -10000;
+            row.hum = -10000;
+
+            row.spike = -10000;
+            row.surface = -10000;
+            row.difference_03 = -10000;
+            row.d5_1 = -10000;
+            row.d4_1 = -10000;
+            row.d5_25 = -10000;
+            row.d4_25 = -10000;
+          } else if (general.page == "monitor") {
+            row.time = nextRowDateTime;
+            row.surface = -10000;
+            row.spike = -10000;
+            row.spike2 = -10000;
+            row.dv = -10000;
+            row.CO2 = -10000;
+            row.hum_sh = -10000;
+            row.T1 = -10000;
+            row.dp_sh = -10000;
+            row.D1_PM25_st = -10000;
+            row.D1_PM1_st = -10000;
+            row.D1_PM10_st = -10000;
+            row.D1_PM03_num = -10000;
+            row.hum_T1 = -10000;
+          }
+
+          chartdata.push(row);
+        }
+      }
+    }
+  }
+
+  // Sort chart data by timestamp
+  chartdata.sort((current, next) => current.time.getTime() - next.time.getTime());
+
+  // Calculate ventilation loss per day (period is in seconds)
+  const ventLossPerDay = (ventLoss75 * 24 * 3600) / period;
+
+  // Check if dust sensors are installed
+  general.dustInstalled = dustPresent !== undefined;
+  //totalData = ["mv75Loss", "totalFlow", "loss", "CO2Removed", "WaterVaporOut", "WaterLiquidOut"];
+  try {
+    if ((chartdata[0].esp = 1)) {
+      datatotals[0].CO2Removed = (datatotals[0].CO2Removed * 0.03).toFixed(2);
+      datatotals[0].totalFlow = (datatotals[0].totalFlow * 0.03).toFixed(2);
+    }
+    datatotals[0].mv75Loss = ventLoss75.toFixed(2);
+    datatotals[0].loss = heatRecovered.toFixed(2);
+    datatotals[0].WattLoss = totalWattLoss.toFixed(2);
+    datatotals[0].WaterLiquidOut = waterLiquidTotal.toFixed(2);
+    datatotals[0].WaterVaporOut = waterTotal.toFixed(2);
+  } catch (error) {
+    data["data-totals"] = {
+      0: {
+        mv75Loss: ventLoss75.toFixed(2),
+        loss: heatRecovered.toFixed(2),
+        WattLoss: totalWattLoss.toFixed(2),
+        WaterLiquidOut: waterLiquidTotal.toFixed(2),
+        WaterVaporOut: waterTotal.toFixed(2),
+      },
+    };
+  }
+
+  return data;
+}

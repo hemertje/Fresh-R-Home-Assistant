@@ -1,0 +1,611 @@
+function createSvg(onReportPage) {
+
+  if($("#polar-chart").length > 0 && onReportPage == false) {
+    var polarSvg = d3.select('#polar-chart').select("g");
+
+    return polarSvg;
+  }
+  //console.log(onReportPage);
+  if(onReportPage != false){
+    if($( window ).width() > 1600){
+      width="30%";
+      heigth="30%";
+    }else{
+      width="70%";
+      heigth="70%";
+    }
+  }
+  else{
+      width="100%";
+      heigth="100%";
+  }
+  
+  var polarSvg = d3.select('.polar-chart-container').append("svg")
+  .attr("id", "polar-chart")
+  .attr("width", "100%")
+  .attr("height", "100%")
+  .attr("class", "polar-chart")
+  .attr('viewBox', general.polarX + ' ' + general.polarY + ' ' + general.polarWidth + ' ' + 1090)
+  .attr('preserveAspectRatio','xMidYMid meet')
+  .append("g")
+  .attr("transform", "translate(" + parseInt(general.polarWidth / 2) + "," + parseInt(general.polarHeight / 2 + 20) + ")");
+  
+  return polarSvg;
+}
+
+/**
+ * Appends the time labels to the svg container
+ */
+function drawPolarFrame(polarSvg) {
+
+  var polarAxes = polarSvg.append("g")
+  .attr("class", "axis visible").attr("font-size", "24px");
+
+  polarAxes.append("text")
+  .attr("x", 0)
+  .attr("y", (-general.polarInnerRadius + 10))
+  .attr("dy", "35")
+  .attr("style", "text-anchor: middle;")
+  .text("24:00 | 00:00");
+
+  polarAxes.append("text")
+  .attr("x", general.polarInnerRadius)
+  .attr("y", 0)
+  .attr("dx", "-15")
+  .attr("dy", "10")
+  .attr("style", "text-anchor: end;")
+  .text("6:00");
+
+  polarAxes.append("text")
+  .attr("x", 0)
+  .attr("y", general.polarInnerRadius)
+  .attr("dy", "-15")
+  .attr("style", "text-anchor: middle;")
+  .text("12:00");
+
+  polarAxes.append("text")
+  .attr("x", -general.polarInnerRadius)
+  .attr("y", 0)
+  .attr("dx", "15")
+  .attr("dy", "10")
+  .attr("style", "text-anchor: start;")
+  .text("18:00");
+}
+
+function updateGradient(settings, svg) {
+
+  var spikeGradient = svg.append("linearGradient")
+  .attr("y1", "0")
+  .attr("y2", "0")
+  .attr("x1", 0)
+  .attr("x2", settings.spikeMaxRadius)        
+  .attr("id", "spikeGradient")
+  .attr("gradientUnits", "userSpaceOnUse");
+
+  spikeGradient.append("stop")
+  .attr("offset", "0")
+  .attr("stop-color", settings.spikeStartColor);
+
+  spikeGradient.append("stop")
+  .attr("offset",  settings.spikeStartGradient / settings.spikeMax)
+  .attr("id",  "spikeEndStop")
+  .attr("stop-color", settings.spikeStartColor);
+  
+  spikeGradient.append("stop")
+  .attr("offset", "1")
+  .attr("stop-color", settings.spikeEndColor); 
+
+  return spikeGradient
+}
+
+
+function drawPolarGauge(settings, svg, radius, spikeData, surfaceData, isToday, spikeData2,reqDate,polardate) {
+
+  
+    var gauge = svg.append("g")
+      .attr("class", "averages")
+      .attr("transform", "translate(0,-"+(radius*.5)+")");
+
+ 
+  var tText = (isToday) ? "" : "Average";
+  //console.log(spikeData);
+  gauge.append("text")
+    .attr("class", "when")
+    .attr("text-anchor", "middle")
+    .attr("font-size", "50px")
+    .attr("transform", "translate(0,160)")
+    .attr("data-text", tText)
+    .text(polardate);
+
+  gauge.append("text")
+    .attr("class", "what")
+    .attr("text-anchor", "middle")
+    .attr("font-size", "24px")
+    .attr("transform", "translate(0,200)")
+    .attr("data-text", tText)
+    .text(tText);
+
+
+   
+      gauge.append("text")
+        .attr("class", "avgspike2")
+        .attr("fill", settings.spikeLabelColor2)
+        .style("opacity", 0.7)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "50px")
+        .attr("transform", "translate(0,-20)")
+        .attr("data-spike", spikeData2.toFixed(0))
+        .text(spikeData2.toFixed(0) + settings.radiusSpikeValueType2);
+
+      gauge.append("text")
+        .attr("class", "data-type-text")
+        .attr("text-anchor", "middle")
+        .attr("font-size", "24px")
+        .attr("transform", "translate(0,25)")
+        .text(settings.radiusSpikeLabel2);
+
+      gauge.append("text")
+        .attr("class", "avgsurface")
+        .attr("fill", settings.radiusSurfaceLabelColor)
+        .style("opacity", "0.7")
+        .attr("text-anchor", "middle")
+        .attr("font-size", "50px")
+        .attr("transform", "translate(225,215)")
+        .attr("data-surface", parseFloat(surfaceData).toFixed(0))
+        .text(parseFloat(surfaceData).toFixed(0) + settings.radiusSurfaceValueType);
+  
+      
+      gauge.append("text")
+        .attr("class", "data-type-text")
+        .attr("text-anchor", "middle")
+        .attr("font-size", "24px")
+        .attr("transform", "translate(225,275)")
+        .text(settings.radiusSurfaceLabel);
+
+      gauge.append("text")
+        .attr("class", "avgspike")
+        .attr("fill", settings.spikeLabelColor)
+        .style("opacity", 0.7)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "50px")
+        .attr("transform", "translate(0,"+((radius*1.2)-95)+")")
+        .attr("data-spike", spikeData.toFixed(0))
+        .text(spikeData.toFixed(0) + settings.radiusSpikeValueType);
+    
+
+      gauge.append("text")
+        .attr("class", "data-type-text")
+        .attr("text-anchor", "middle")
+        .attr("font-size", "24px")
+        .attr("transform", "translate(0,"+(radius*1.2)+")")
+        .text(settings.radiusSpikeLabel);
+
+   
+    
+  var currentDate = general.formatDate(new Date());
+
+  if(currentDate == reqDate) {
+
+    var currentTime = new Date()
+    var currentMinutes = currentTime.getMinutes();
+    var currentHour = currentTime.getHours();
+
+    if(currentMinutes < 10) {
+      currentMinutes = "0" + currentMinutes;
+    } else if(currentHour < 10) {
+      currentHour = "0" + currentHour;
+    }
+
+    gauge.append("text")
+    .attr("class", "clock")
+    .attr("font-size", "24px")
+    .attr("text-anchor", "middle")
+    .attr("transform", "translate(0,215)")
+    .text(currentHour + ":" + currentMinutes);
+    
+  } else {
+
+    gauge.append("text")
+    .attr("class", "clock")
+    .attr("font-size", "24px")
+    .attr("text-anchor", "middle")
+    .attr("transform", "translate(0,215)")
+    .text("");
+  }
+
+  return gauge;
+}
+
+function polarLabelValues(data, isToday,settings) {
+  var averageSpike = d3.mean(data, function(d) {
+      if(d[settings.spike] != -10000 ) {
+        return d[settings.spike]
+      }
+  });
+  //console.log(averageSpike);
+  var averageSpike2 = d3.mean(data, function(d) {
+      if(d[settings.spike2] != -10000 ) {
+        return d[settings.spike2]
+      }
+  });
+
+  var averageSurface = d3.mean(data, function(d) {
+    if(d[settings.surface] != -10000) {
+      return d[settings.surface];
+    }
+  });
+
+  var spike = (isToday) ? data[data.length - 1].spike : averageSpike;
+  var spike2 = (isToday) ? data[data.length - 1].spike2 : averageSpike2;
+  
+  var surface = (isToday) ? data[data.length - 1].surface : averageSurface;
+  //console.log(spike, surface, spike2);
+  return {spike, surface, spike2};
+}
+
+function determineSurfaceDomain(settings, data) {
+
+    settings.radialSurfaceMin = d3.min(data, function(d) {
+      return settings.radialSurfaceMin;
+    });
+    settings.radialSurfaceMax = d3.max(data, function(d) {
+      return Math.max(+d[settings.surface],settings.radialSurfaceMaxGlobal);
+    });
+    
+    var radialSurfaceMin = settings.radialSurfaceMin;
+    var radialSurfaceMax = settings.radialSurfaceMax;
+    return {radialSurfaceMin, radialSurfaceMax};
+}
+
+function determineSpikeDomain(settings, data) {
+
+    settings.spikeMin = d3.min(data, function(d) {
+      return settings.spikeMin;
+    });
+    settings.spikeMax = d3.max(data, function(d) {
+      return Math.max(settings.spikeMaxGlobal,d[settings.spike]);
+    });
+
+    var spikeMin = settings.spikeMin;
+    var spikeMax = settings.spikeMax;
+
+    return {spikeMin, spikeMax}
+}
+
+
+function determineSurfaceScales(settings, surfaceDomain, minTime, maxTime) {
+
+    var surfaceRadialScale = d3.scaleLinear()
+        .domain([settings.radialSurfaceMin, settings.radialSurfaceMax])
+        .range([settings.radialSurfaceInnerRadius, settings.radialSurfaceMaxRadius]);
+
+    var surfaceAngularScale = d3.scaleTime()
+        .domain([minTime, maxTime])
+        .range([0, 2 * Math.PI]);
+
+    var radialSurfaceArea = d3.radialArea()
+        .defined(function(d) { return (d[settings.surface] != -10000) ? true : false;})
+        .curve(d3.curveNatural)
+        .angle(function(d) { return surfaceAngularScale(d.time); })
+        .innerRadius(function(d) { return settings.radialSurfaceInnerRadius; })
+        .outerRadius(function(d) { return surfaceRadialScale(d[settings.surface]); }); 
+
+    return radialSurfaceArea;
+}
+
+function timeSnap(t, interval, minTimeValue) {
+  return new Date(Math.round((t - minTimeValue) / interval) * interval + minTimeValue);
+}
+
+
+function genPolarData(settings, data, minTimeValue) {
+
+  var polarData = d3.nest()
+  .key(function(d) { return timeSnap(d.time, general.polarInterval, minTimeValue) })
+  .rollup(function(a) {
+    return {
+      "time": timeSnap(a[0].time, general.polarInterval, minTimeValue),
+      "spike": d3.mean(a, function(d) {
+        if(d[settings.spike] == null)return -10000
+        else return d[settings.spike];
+      }),
+      "spike2": d3.mean(a, function(d) {
+        return d[settings.spike2];
+      })
+    };     
+  }).entries(data);
+  
+  return polarData;
+}
+
+function createPolarChart(data, settings, onReportPage) {
+  
+  data = data["chart-data"];
+  
+  var polarSvg = createSvg(onReportPage);
+
+  polarSvg.selectAll("path, line, text, linearGradient, g").remove();
+
+  var firstTime = data[0].time;
+
+  var minTime = new Date(firstTime.valueOf()).setHours(0,0,0,0);
+  var maxTime = new Date(firstTime.valueOf()).setHours(23,59,59,999);
+
+  var minTimeValue = minTime.valueOf();
+  
+  drawPolarFrame(polarSvg);
+
+  var isToday = false;
+  var reqDate = general.formatDate(firstTime);
+  var polardate = general.formatDate(data[0].time);
+  var currentDate = general.formatDate(new Date());
+
+  if(reqDate == currentDate) {
+    isToday = true;
+  }
+
+  var labelValues = polarLabelValues(data, isToday,settings);
+  
+  drawPolarGauge(settings, polarSvg, general.polarInnerRadius, labelValues.spike, labelValues.surface, isToday, labelValues.spike2,reqDate,polardate);
+
+  var polarData = genPolarData(settings, data, minTime);
+  
+  var surfaceDomain = determineSurfaceDomain(settings, data);
+
+  var surfaceArea = determineSurfaceScales(settings, surfaceDomain, minTime, maxTime);
+
+  var spikeDomain = determineSpikeDomain(settings, data);
+
+ /**
+   * Surface
+   */
+  polarSvg.append("path")
+    .attr("class", "radialSurface")
+    .attr("fill", settings.radiusSurfaceBackgroundColor)
+    .attr("d", surfaceArea(data));
+
+  var spikeRadialScale = d3.scaleLinear()
+    .domain([settings.spikeMin, settings.spikeMax])
+    .range([settings.spikeInnerRadius, settings.spikeMaxRadius ]);
+
+  var spikeRadialScale2 = d3.scaleLinear()
+    .domain([settings.spikeMin2, settings.spikeMax2])
+    .range([settings.spikeInnerRadius, settings.spikeMaxRadius ]);
+
+  var spikeAngleScale = d3.scaleTime()
+    .domain([minTime, maxTime])
+    .range([-90, 270]);
+
+  var gradient = updateGradient(settings, polarSvg);
+
+  /**
+   * Spikes
+   */
+  polarSvg.selectAll(".spike")
+  .data(polarData)
+  .enter().append("line")
+  .attr("class", "spikeline")
+  .attr("stroke-width", 5)
+  .attr("style", "stroke: url(#spikeGradient)")
+  .attr("transform", function(d,i) { return "rotate(" + (spikeAngleScale(d.value.time)) + ")"; })
+  .attr("x1", settings.spikeInnerRadius)
+  .attr("y1", 0)
+  .attr("x2", function(d,i) {
+
+    return (d.value.spike == -10000) ? settings.spikeInnerRadius : spikeRadialScale(d.value.spike); 
+  })
+  .attr("y2", 0);
+
+  /**
+   * Spikes2
+   */
+  polarSvg.selectAll(".spike")
+  .data(polarData)
+  .enter().append("line")
+  .attr("class", "spikeline")
+  .attr("stroke-width", 5)
+  .attr("style", "stroke: "+settings.spikeStartColor2+";")
+  .attr("transform", function(d,i) { return "rotate(" + (spikeAngleScale(d.value.time)) + ")"; })
+  .attr("x1", settings.spikeInnerRadius)
+  .attr("y1", 10)
+  .attr("x2", function(d,i) {
+    return (d.value.spike2 == -10000) ? settings.spikeInnerRadius : spikeRadialScale2(d.value.spike2); 
+  })
+  .attr("y2", 10);
+
+
+
+  /**
+   * Spike hover stroke
+   */
+  polarSvg.selectAll(".spike")
+    .data(data)
+    .enter().append("line")
+    .attr("class", "polardata")
+    .attr("transform", function(d,i) { return "rotate(" + (spikeAngleScale(d.time)) + ")"; })
+    .attr("x1", settings.spikeInnerRadius)
+    .attr("y1", 0)
+    .attr("x2", settings.spikeMaxRadius)
+    .attr("y2", 0)
+    .attr("data-spike",function(d,i) { return parseFloat(d[settings.spike]).toFixed(0); })
+    .attr("data-spike2",function(d,i) { return parseFloat(d[settings.spike2]).toFixed(0); })
+    .attr("data-surface",function(d,i) { return parseFloat(d[settings.surface]).toFixed(0); })
+    .attr("data-time",function(d,i) { return d.time; });  
+
+  /**
+   * Gap
+   */ 
+  polarSvg.append("line")
+    .attr("class", "gap")
+    .attr("transform", "rotate(-90)")
+    .attr("x1", settings.spikeInnerRadius)
+    .attr("y1", 0)
+    .attr("x2", settings.spikeMaxRadius)
+    .attr("y2", 0)
+    .attr("stroke", "#B0B3B7")
+    .attr("style", "stroke-width: 7px");
+
+
+
+
+
+
+
+  
+  
+}
+
+function attachPolarEventListeners(settings, date) {
+  
+
+  $(".polardata").unbind("mouseenter");
+  
+  $(".polardata").on("mouseenter", function (event) {
+    
+    $(".polardata").removeClass("active");
+    $(this).addClass("active");
+    
+    var spike = $(this).data("spike");
+    if(spike != -10000){
+      $(".avgspike").html(spike + settings.radiusSpikeValueType);
+    }
+
+    var spike2 = $(this).data("spike2");
+    if(spike2 != -10000){
+      $(".avgspike2").html(spike2 + settings.radiusSpikeValueType2);
+    }
+    
+    var surface = $(this).data("surface");
+
+    if(surface != -10000){
+      $(".avgsurface").html(surface + settings.radiusSurfaceValueType);
+    }
+
+    updateAqiReferences(spike, surface);
+    
+    if(general.chartName == "oxygen")
+    {
+      setstatementcolor(spike);
+    }
+
+    var time = new Date($(this).data("time"));
+    $(".clock").html(formatDigits(time.getHours()) + ":" + formatDigits(time.getMinutes()));
+    $(".clock").fadeIn();
+    $(".what").fadeOut();
+  });
+  
+  $(".polar-chart-container").unbind("touchmove");
+  $(".polar-chart-container").on("touchmove", function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    var touch = event.originalEvent.touches[0] || event.originalEvent.changedTouches[0];
+    var myLine = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (myLine.tagName == 'line') {
+
+      var $myLine = $(myLine);
+      
+      if ($myLine.hasClass("polardata")) {
+
+        $(".polardata").removeClass("active");
+        $myLine.addClass("active");
+
+        var spike = $myLine.data("spike");
+        $(".avgspike").html(spike + settings.radiusSpikeValueType);
+
+        var spike2 = $myLine.data("spike2");
+        $(".avgspike2").html(spike2 + settings.radiusSpikeValueType2);
+
+        var surface = $myLine.data("surface");
+
+        
+        $(".avgsurface").html(surface + settings.radiusSurfaceValueType);
+
+        updateAqiReferences(spike, surface);
+
+        setstatementcolor(spike);
+        var ttime = new Date($myLine.data("time"));
+
+        $(".clock").html(formatDigits(ttime.getHours()) + ":"+ formatDigits(ttime.getMinutes()));
+        $(".clock").fadeIn();
+        $(".what").fadeOut();
+      }
+    }
+  });
+
+  $(".polar-chart-container").unbind("touchend");
+  $(".polar-chart-container").on("touchend", function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    $(".polardata").removeClass("active");
+    $(".clock").fadeOut();
+    $(".what").fadeIn();
+  });
+
+  $(".polar-chart-container").unbind("mouseleave");
+  $(".polar-chart-container").on("mouseleave", function (event) {
+    var spike = $(".avgspike").data("spike");
+    $(".avgspike").html(spike + settings.radiusSpikeValueType);
+
+    var spike2 = $(".avgspike2").data("spike");
+    $(".avgspike2").html(spike2 + settings.radiusSpikeValueType2);
+
+    var surface = $(".avgsurface").data("surface");
+    $(".avgsurface").html(surface + settings.radiusSurfaceValueType);
+      //setstatementcolor(spike);
+      
+      var currentDate = new Date()
+      var currentMinutes = currentDate.getMinutes();
+      var currentHour = currentDate.getHours();
+      
+      var currentDate = currentDate.toDateString();
+      var reqDate = date.toDateString()
+
+      if(currentMinutes < 10) {
+          currentMinutes = "0" + currentMinutes;
+      } else if(currentHour < 10) {
+          currentHour = "0" + currentHour;
+      }
+
+      if(currentDate == reqDate) {
+
+          $(".clock").html(currentHour + ":" + currentMinutes);
+          $(".clock").fadeIn();
+      } else {
+
+          $(".clock").fadeOut();
+      }
+
+      $(".what").fadeIn();
+
+      $(".polardata").removeClass("active");
+  });  
+}
+
+function updateAqiReferences(indoorValue, outdoorValue) {
+  $(".aqi-indoor-reference").attr("x", indoorValue * 2);
+  $(".aqi-outdoor-reference").attr("x", outdoorValue * 2);
+}
+
+function setstatementcolor(spike) {
+	switch (true) {
+	case (spike >= 1800):
+        $('.statement').css('color','#ff0000');
+        $('.statement').empty()
+        $('.statement').text("airflow towards maximum");
+		break;
+	case (spike >= 1200):
+        $('.statement').css('color','#EF7100');
+        $('.statement').empty()
+        $('.statement').text("airflow has been increased");
+		break;
+	default:
+        $('.statement').css('color','#1eaf01');
+        $('.statement').empty()
+        $('.statement').text("take a deep breath. the air is fresh");
+		break;
+	}
+}
+
+function formatDigits(n) {
+	return n > 9 ? "" + n: "0" + n;
+}

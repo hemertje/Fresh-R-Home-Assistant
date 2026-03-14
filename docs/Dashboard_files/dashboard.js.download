@@ -1,0 +1,532 @@
+// ============================================================================
+// DASHBOARD PAGE - Main Entry Point
+// ============================================================================
+
+$(function() {
+    
+    // Only executes if this is the dashboard page
+    if($("main").is("#dashboard-page")) {
+        
+        // ====================================================================
+        // CONSTANTS
+        // ====================================================================
+        
+        const CHART_HEIGHTS = {
+            DEFAULT_BOTTOM: "31%",
+            DUST_FULL: "78%",
+            DUST_MONITOR: "52%"
+        };
+        
+        const DIALOG_CONFIG = {
+            AUTO_OPEN: false,
+            DRAGGABLE: false,
+            RESIZABLE: false,
+            POSITION: { my: 'top', at: 'top' }
+        };
+        
+        const AQI_LABELS = {
+            MONITOR: [
+                'Extremely poor',
+                'Very poor',
+                'Poor',
+                'Moderate',
+                'Fair',
+                'Good'
+            ],
+            DEFAULT: [
+                'Hazardous',
+                'Very Unhealthy',
+                'Unhealthy',
+                'Unhealthy for sensitive groups',
+                'Moderate',
+                'Good'
+            ]
+        };
+        
+        const DUST_SETTINGS = {
+            PM25: {
+                FRESH_R: {
+                    spike: "d5_25",
+                    surface: "d4_25",
+                    spike2: "d1_25",
+                    radiusSpikeLabel: "Fresh-r supply PM2.5",
+                    radiusSurfaceLabel: "Outdoor PM2.5",
+                    radiusSpikeLabel2: "Indoor PM2.5",
+                    radialSurfaceMin: 0,
+                    radialSurfaceMax: 50,
+                    spikeMin: 0,
+                    spikeMax: 50,
+                    spikeMin2: 0,
+                    spikeMax2: 50,
+                    radiusSpikeValueType: " µg/m3",
+                    radiusSpikeValueType2: " µg/m3",
+                    radiusSurfaceValueType: " µg/m3",
+                    radiusSurfaceBackgroundColor: "#ba8529"
+                },
+                MONITOR: {
+                    spike: "D1_PM10_st",
+                    radiusSpikeLabel: "PM10",
+                    surface: "D1_PM25_st",
+                    radiusSurfaceLabel: "PM2.5"
+                }
+            },
+            PM03: {
+                FRESH_R: {
+                    spike: "d5_03",
+                    surface: "d4_03",
+                    spike2: "d1_03",
+                    radiusSpikeLabel: "Fresh-r supply PM0.3",
+                    radiusSurfaceLabel: "Outdoor PM0.3",
+                    radiusSpikeLabel2: "Indoor PM0.3",
+                    radiusSpikeValueType: " #/0.1l",
+                    radiusSpikeValueType2: " #/0.1l",
+                    radiusSurfaceValueType: " #/0.1l",
+                    radialSurfaceMin: 0,
+                    radialSurfaceMax: 6000,
+                    spikeMin: 0,
+                    spikeMax: 6000,
+                    spikeMin2: 0,
+                    spikeMax2: 6000,
+                    radiusSurfaceBackgroundColor: "rgb(219, 120, 70)"
+                },
+                MONITOR: {
+                    spike: "D1_PM10_st",
+                    radiusSpikeLabel: "PM10",
+                    surface: "D1_PM25_st",
+                    radiusSurfaceLabel: "PM2.5"
+                }
+            },
+            AQI: {
+                FRESH_R: {
+                    spike: "d5_10",
+                    surface: "d4_10",
+                    spike2: "d1_10",
+                    radiusSpikeLabel: "Fresh-r supply PM10",
+                    radiusSurfaceLabel: "Outdoor PM10",
+                    radiusSpikeLabel2: "Indoor PM10",
+                    radialSurfaceMin: 0,
+                    radialSurfaceMax: 50,
+                    spikeMin: 0,
+                    spikeMax: 50,
+                    spikeMin2: 0,
+                    spikeMax2: 50,
+                    radiusSpikeValueType: " µg/m3",
+                    radiusSpikeValueType2: " µg/m3",
+                    radiusSurfaceValueType: " µg/m3",
+                    radiusSurfaceBackgroundColor: "#ba8529"
+                },
+                MONITOR: {
+                    spike: "D1_PM25_st",
+                    radiusSpikeLabel: "PM2.5",
+                    surface: "D1_PM1_st",
+                    radiusSurfaceLabel: "PM1.0"
+                }
+            }
+        };
+        
+        // ====================================================================
+        // HELPER FUNCTIONS
+        // ====================================================================
+        
+        function adjustLinearContainers(chartName, page) {
+            if (chartName !== "dust") {
+                $(".lin-chart-container").css("height", "");
+                $(".lin-chart-container").empty();
+                $("#right-panel").removeClass("dust-mode dust-monitor-mode");
+                $("#lin-top-container").show();
+                $("#lin-mid-container").show();
+                $("#lin-bot-container").show();
+            } else {
+                $(".lin-chart-container").empty();
+                $(".lin-chart-container").css("height", "");
+                
+                if (page === "monitor") {
+                    $("#right-panel").removeClass("dust-mode").addClass("dust-monitor-mode");
+                    $("#lin-top-container").hide();
+                    $("#lin-mid-container").show();
+                    $("#lin-bot-container").show();
+                } else {
+                    $("#right-panel").removeClass("dust-monitor-mode").addClass("dust-mode");
+                    $("#lin-top-container").hide();
+                    $("#lin-mid-container").show();
+                    $("#lin-bot-container").hide();
+                }
+            }
+        }
+        
+        function createAQILabels() {
+            // Remove any existing labels first
+            removeAQILabels();
+            
+            const labels = general.page === "monitor" ? AQI_LABELS.MONITOR : AQI_LABELS.DEFAULT;
+            
+            labels.forEach((label, index) => {
+                $("#right-panel").append(`<div id="art${index}">${label}</div>`);
+            });
+            
+            positionAQILabels();
+        }
+        
+        function positionAQILabels() {
+            const savedPos = [];
+            
+            $(".area").each(function() {
+                const pos = $(this).offset();
+                const height = $(this).height();
+                if (pos.left !== 0 || pos.top !== 0) {
+                    savedPos.push({
+                        left: pos.left + 10,
+                        top: pos.top + (height / 2) - 8
+                    });
+                }
+            });
+            
+            for (let i = 0; i < 6; i++) {
+                $("#art" + i).css({
+                    "top": savedPos[i].top,
+                    "left": savedPos[i].left,
+                    "position": "fixed",
+                    "font-size": "16px"
+                });
+            }
+        }
+        
+        function removeAQILabels() {
+            for (let i = 0; i < 6; i++) {
+                $("#art" + i).remove();
+            }
+        }
+        
+        function setupDialog(idName) {
+            const containerSelector = $("#lin-bot-container").is(":hidden") ? '#lin-mid-container' : '#lin-bot-container';
+            const containerWidth = $(containerSelector).width();
+            const containerHeight = $(containerSelector).height();
+            
+            $("#" + idName).append(`
+                <div id="dialog" title="chart information" style="padding-left:4em;"></div>
+            `);
+            
+            createAQILabels();
+            
+            $("#dialog").dialog({
+                ...DIALOG_CONFIG,
+                appendTo: 'body',
+                position: {
+                    my: 'top left',
+                    at: 'top left',
+                    of: $(containerSelector)
+                },
+                width: containerWidth,
+                height: containerHeight,
+                create: function(event) {
+                    $(event.target).parent().css({
+                        'position': 'fixed',
+                        'background-color': "transparent",
+                        'pointer-events': 'none'
+                    });
+                    
+                    $(".ui-dialog .ui-dialog-titlebar").css({
+                        "padding": "0px",
+                        "display": "flex"
+                    });
+                    
+                    const $parent = $(this).parent();
+                    const $button = $parent.find(".ui-dialog-titlebar-close");
+                    
+                    $button.removeClass("ui-dialog-titlebar-close")
+                        .css({
+                            "float": "right",
+                            "pointer-events": "auto"
+                        })
+                        .button("option", {
+                            icons: {primary: false},
+                            text: true,
+                            label: "Close"
+                        });
+                },
+                close: function(event) {
+                    removeAQILabels();
+                }
+            });
+            
+            $("#dialog").dialog("open");
+        }
+        
+        function applyDustSettings(settingsKey) {
+            const settings = getSettings();
+            const dustConfig = DUST_SETTINGS[settingsKey];
+            const pageConfig = general.page === "monitor" ? dustConfig.MONITOR : dustConfig.FRESH_R;
+            
+            Object.assign(settings, pageConfig);
+            
+            if (general.page === "monitor") {
+                $("#lin-top-container").show();
+                $("#lin-mid-container").show();
+                $("#lin-bot-container").hide();
+                
+                if (settingsKey === "PM25") {
+                    settings.top = settings.pm10;
+                    settings.mid = settings.pm25;
+                } else if (settingsKey === "PM03") {
+                    settings.top = settings.pm10;
+                    settings.mid = settings.pm10_2;
+                } else if (settingsKey === "AQI") {
+                    settings.top = settings.pm03;
+                    settings.mid = settings.pm1;
+                }
+            } else {
+                if (settingsKey === "PM03") {
+                    $("#lin-top-container").show();
+                    $("#lin-mid-container").show();
+                    $("#lin-bot-container").hide();
+                } else {
+                    $("#lin-top-container").hide();
+                    $("#lin-mid-container").hide();
+                    $("#lin-bot-container").show();
+                }
+            }
+            
+            initCharts(date, serial);
+        }
+        
+        // ====================================================================
+        // CHART INITIALIZATION
+        // ====================================================================
+        
+        function initCharts(date, serial) {    
+            const stringDate = dateFormat(date);
+            const settings = getSettings();
+
+            // Clear existing charts and messages before loading new data
+            $(".polar-chart-container").empty();
+            $(".lin-chart-container").empty();
+
+            fetchData(stringDate, serial).then(function(data) {
+                // Check if there's no data for the entire day
+                if (!data || !data["chart-data"] || data["chart-data"].length === 0) {
+                    $(".polar-chart-container").append("<h1>No data found for this day</h1>");
+                    return;
+                }
+                
+                data = formatData(data);    
+                console.log(data);
+                
+                // Check if dust sensors are installed
+                if (general.chartName === "dust" && !general.dustInstalled) {
+                    $(".polar-chart-container").append("<h1>Your Fresh-r doesn't have dust sensors installed</h1>");
+                    return;
+                }
+
+                adjustLinearContainers(general.chartName, general.page);
+
+                // Create charts
+                createPolarChart(data, settings, false);
+                if (typeof settings.top !== 'undefined') {
+                    createLinearChart(data, settings.top, "#lin-top-container", false);
+                }
+                if (typeof settings.mid !== 'undefined') {
+                    createLinearChart(data, settings.mid, "#lin-mid-container", false);
+                }
+
+                if (typeof settings.bot !== 'undefined') {
+                    createLinearChart(data, settings.bot, "#lin-bot-container", false);
+                }
+
+                // Register event handlers
+                attachLinearEventListeners();
+                attachPolarEventListeners(settings, date, data);
+            });
+        }
+
+        
+        // ====================================================================
+        // SETTINGS MANAGEMENT
+        // ====================================================================
+        
+        function getSettings() {
+            switch(general.chartName) {
+                case "oxygen":
+                    if (general.page === "forward") return oxygenForward;
+                    if (general.page === "monitor") return oxygenMonitor;
+                    return oxygen;
+                
+                case "humidity":
+                    if (general.page === "forward") return humidityForward;
+                    if (general.page === "monitor") return humidityMonitor;
+                    return humidity;
+                
+                case "dust":
+                    if (general.page === "monitor") return dustMonitor;
+                    return dust;
+                
+                default:
+                    return oxygen;
+            }
+        }
+
+        function urlParameters() {
+            const parameters = window.location.search.substring(1);    
+            const requestSegments = parameters.split("&");
+            const urlParams = {};
+
+            for (let i = 0; i < requestSegments.length; i++) {
+                const urlParameter = requestSegments[i].split("=");
+                urlParams[urlParameter[0]] = urlParameter[1];
+            }
+
+            return urlParams;
+        }
+        
+        // ====================================================================
+        // UI CONTROLS & EVENT HANDLERS
+        // ====================================================================
+        
+        // Datepicker configuration
+        $('#datepicker').datepicker({
+            showWeek: true,
+            changeMonth: true,
+            changeYear: true,
+            minDate: new Date(2016, 0, 1),
+            maxDate: new Date(),
+            dateFormat: "MM dd, yy",
+            onClose: function() {
+                date = $(this).datepicker("getDate");
+                const stringDate = dateFormat(date);
+                initCharts(date, serial);
+            }
+        });
+        
+        // Set initial date
+        $('#datepicker').datepicker("setDate", new Date());
+
+        $("#datepikcer").on("touchstart", function() {
+            $("#ui-datepicker-div").show();
+        });
+        
+        // Previous day button
+        $('.prev').click(function() {
+            date = new Date(date.getTime());
+            date.setDate(date.getDate() - 1);
+            $('#datepicker').datepicker("setDate", date);
+            initCharts(date, serial);
+        });
+
+        // Next day button
+        $('.next').click(function() {
+            const today = dateFormat(new Date());
+            const reqDate = dateFormat(date);
+
+            if (today !== reqDate) {
+                date = new Date(date.getTime() + 24 * 3600 * 1000);
+                $('#datepicker').datepicker("setDate", date);
+                initCharts(date, serial);
+            } 
+        });
+        
+        // Overview buttons (oxygen, humidity, dust)
+        $("#oxygen, #dust, #humidity").click(function() {
+            $(".overview-btn").removeClass("active-overview");
+            $(this).addClass("active-overview");
+
+            const chartName = $(this).attr("id");
+            general.chartName = chartName;
+            
+            if (general.chartName === "dust" && general.page === "monitor") {
+                const settings = getSettings();
+                settings.top = settings.pm10;
+                settings.mid = settings.pm10_2;
+                $("#lin-top-container").show();
+                $("#lin-mid-container").show();
+                $("#lin-bot-container").hide();
+            }
+            
+            $("#lin-bot-container").show();
+            initCharts(date, serial);
+        });
+        
+        // Fixed toolbar on scroll
+        $(window).scroll(function() {
+            $(".collapse-container").removeClass("show-collapse-container");
+            
+            const offset = document.scrollingElement.scrollTop;
+
+            if (offset >= 60) {
+                $("#toolbar").addClass("toolbar-fixed");
+                $(".polar-chart-container").addClass("fixed-toolbar");
+            } else {
+                $("#toolbar").removeClass("toolbar-fixed");
+                $(".polar-chart-container").removeClass("fixed-toolbar");
+            }
+        });
+        
+        // ====================================================================
+        // DUST BUTTON HANDLERS
+        // ====================================================================
+        
+        $('#PM25').on('click touchstart', function() {
+            applyDustSettings('PM25');
+        });
+
+        $('#PM03').on('click touchstart', function() {
+            applyDustSettings('PM03');
+        });
+
+        $('#AQI').on('click touchstart', function() {
+            applyDustSettings('AQI');
+        });
+
+        // ====================================================================
+        // EXPORT & UTILITY HANDLERS
+        // ====================================================================
+        
+        $('#export').on('click touchstart', function() {
+            $('.main-content').addClass('spinner');
+
+            const element1 = document.getElementById("right-panel");
+            const element2 = document.getElementById("polar-chart");
+
+            const elementToPrint = document.createElement('div');
+            elementToPrint.appendChild(element2.cloneNode(true));
+            elementToPrint.appendChild(element1.cloneNode(true));
+
+            const opt = {
+                filename: 'dashboard',
+                margin: 0,
+                html2canvas: { 
+                    letterRendering: true, 
+                    scale: 3
+                },
+                jsPDF: { 
+                    unit: 'mm', 
+                    format: [element1.offsetWidth, element1.offsetHeight], 
+                    orientation: 'portrait',
+                    compress: true 
+                }
+            };
+            
+            html2pdf(elementToPrint, opt).then(function() {
+                $('.main-content').removeClass('spinner');
+            });
+        });
+
+        $(":button").not(".prev, .next").on('click touchstart', function() {
+            $("#dialog").dialog("close");
+        });
+
+        // ====================================================================
+        // INITIALIZATION
+        // ====================================================================
+        
+        let date = new Date();
+        const dateFormat = d3.timeFormat("%Y-%m-%d");
+        const urlParams = urlParameters();
+        const serial = urlParams["serial"];
+        general.page = urlParams["device-type"];
+
+        let linkToReportPage = window.location.search;
+        linkToReportPage = linkToReportPage.replace("dashboard", "report");
+        $('.dashboard-link-to-report').attr("href", 'index.php' + linkToReportPage);
+
+        initCharts(date, serial);
+    }
+});
