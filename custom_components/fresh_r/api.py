@@ -399,9 +399,10 @@ class FreshRApiClient:
     survive between the login redirect and subsequent API POSTs.
     """
 
-    def __init__(self, email: str, password: str, ha_session: aiohttp.ClientSession) -> None:
+    def __init__(self, email: str, password: str, ha_session: aiohttp.ClientSession, hass=None) -> None:
         self._email      = email
         self._password   = password
+        self._hass       = hass  # Home Assistant instance for storage
         # ha_session kept only for backward-compatibility; not used for API calls
         self._ha_session = ha_session
         self._token: str | None = None
@@ -410,6 +411,8 @@ class FreshRApiClient:
         self._serials: list[str] = []  # Cached device serials
         # Persistent session — preserves cookies (PHPSESSID) across requests
         self._session: aiohttp.ClientSession | None = None
+        # Session persistence storage
+        self._store = None  # Will be initialized if hass is provided
         # Live monitoring
         self._monitor_requests = []
         self._monitor_responses = []
@@ -539,15 +542,185 @@ class FreshRApiClient:
         age = (datetime.now(timezone.utc) - self._token_time).total_seconds()
         return age >= (TOKEN_EXPIRY_SECONDS - TOKEN_REFRESH_SECONDS)
 
+    def _init_storage(self):
+        """Initialize session storage if hass is available."""
+        if self._hass and not self._store:
+            from homeassistant.helpers.storage import Store
+            self._store = Store(self._hass, 1, f"fresh_r_session_{self._email}")
+            _LOGGER.info("📦 Session persistence enabled for %s", self._email)
+
+    async def _save_session(self):
+        """Save current session to persistent storage."""
+        if not self._store or not self._token:
+            return
+        
+        try:
+            import time
+            session_data = {
+                "sess_token": self._token,
+                "timestamp": time.time(),
+                "email": self._email,
+            }
+            
+            # Save cookies from session
+            if self._session:
+                cookies = {}
+                for cookie in self._session.cookie_jar:
+                    cookies[cookie.key] = {
+                        "value": cookie.value,
+                        "domain": cookie["domain"],
+                        "path": cookie["path"],
+                    }
+                session_data["cookies"] = cookies
+            
+            await self._store.async_save(session_data)
+            _LOGGER.info("💾 Session saved to storage (token=%.8s…)", self._token)
+        except Exception as err:
+            _LOGGER.warning("Failed to save session: %s", err)
+
+    async def _restore_session(self) -> bool:
+        """Try to restore session from persistent storage.
+        
+        Returns:
+            True if session was restored and is valid, False otherwise
+        """
+        if not self._store:
+            return False
+        
+        try:
+            import time
+            saved = await self._store.async_load()
+            if not saved:
+                _LOGGER.debug("No saved session found")
+                return False
+            
+            # Check session age
+            age = time.time() - saved.get("timestamp", 0)
+            max_age = 86400  # 24 hours
+            
+            if age > max_age:
+                _LOGGER.info("📅 Saved session expired (%.1f hours old)", age / 3600)
+                return False
+            
+            _LOGGER.info("🔄 Attempting to restore session (%.1f hours old)", age / 3600)
+            
+            # Restore token
+            self._token = saved.get("sess_token")
+            self._token_time = datetime.now(timezone.utc) - timedelta(seconds=age)
+            
+            # Restore cookies if available
+            if "cookies" in saved and self._session:
+                for name, cookie_data in saved["cookies"].items():
+                    self._session.cookie_jar.update_cookies(
+                        {name: cookie_data["value"]},
+                        response_url=URL(f"https://{cookie_data['domain']}{cookie_data['path']}")
+                    )
+                _LOGGER.debug("🍪 Restored %d cookies from storage", len(saved["cookies"]))
+            
+            # Test if restored session is still valid
+            if await self._test_token():
+                _LOGGER.info("✅ Session restored successfully (token=%.8s…)", self._token)
+                return True
+            else:
+                _LOGGER.info("❌ Restored session is no longer valid")
+                self._token = None
+                self._token_time = None
+                return False
+                
+        except Exception as err:
+            _LOGGER.warning("Failed to restore session: %s", err)
+            return False
+
+    async def _test_token(self) -> bool:
+        """Quick API call to test if current token is still valid.
+        
+        Returns:
+            True if token works, False otherwise
+        """
+        if not self._token:
+            return False
+        
+        try:
+            s = self._get_session()
+            
+            # Quick API call with minimal data
+            import time
+            tz_offset = int(time.timezone / 60)
+            
+            api_request = {
+                "tzoffset": str(abs(tz_offset)),
+                "token": self._token,
+                "requests": {
+                    "user_info": {
+                        "request": "userinfo",
+                        "fields": ["first_name"]
+                    }
+                }
+            }
+            
+            api_url = "https://dashboard.bw-log.com/api.php"
+            
+            # Browser sends token in QUERY STRING with EMPTY POST body
+            from urllib.parse import urlencode
+            query_params = {
+                "q": json.dumps(api_request, separators=(',', ':'))
+            }
+            api_url_with_query = f"{api_url}?{urlencode(query_params)}"
+            
+            # Build cookie header
+            cookie_parts = []
+            for cookie in s.cookie_jar:
+                cookie_parts.append(f"{cookie.key}={cookie.value}")
+            cookie_header = "; ".join(cookie_parts)
+            
+            headers = {
+                "Accept": "*/*",
+                "Cookie": cookie_header,
+            }
+            
+            async with s.post(
+                api_url_with_query,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+                allow_redirects=False
+            ) as r:
+                if r.status != 200:
+                    return False
+                
+                body = await r.text()
+                data = _safe_json_parse(body, "Token test")
+                
+                # Check if authenticated
+                if "user_info" in data:
+                    user_info = data["user_info"]
+                    if isinstance(user_info, dict) and user_info.get("success") == True:
+                        _LOGGER.debug("✓ Token test successful")
+                        return True
+                
+                return False
+                
+        except Exception as err:
+            _LOGGER.debug("Token test failed: %s", err)
+            return False
+
     async def async_login(self, force: bool = False) -> None:
         """Authenticate and store session. Raises FreshRAuthError on failure.
         
         Thread-safe with lock to prevent concurrent logins.
+        Implements session persistence to mimic browser behavior.
         
         Args:
             force: Force re-authentication even if token is still valid
         """
         async with self._login_lock:
+            # Initialize storage on first use
+            self._init_storage()
+            
+            # Try to restore saved session first (unless forced)
+            if not force and await self._restore_session():
+                _LOGGER.info("🎯 Using restored session - no login needed")
+                return
+            
             # Check rate limit
             if self._is_rate_limited():
                 raise FreshRRateLimitError(
@@ -560,7 +733,7 @@ class FreshRApiClient:
                 _LOGGER.debug("Token still valid, skipping login")
                 return
             
-            _LOGGER.info("Starting Fresh-R authentication...")
+            _LOGGER.info("🔐 Starting Fresh-R authentication...")
             s = self._get_session()
         
         # Retry logic with exponential backoff
@@ -587,6 +760,10 @@ class FreshRApiClient:
                 self._token = token
                 self._token_time = datetime.now(timezone.utc)
                 _LOGGER.info("Fresh-r authenticated successfully (token=%.8s…)", token)
+                
+                # Save session for future use (mimic browser persistence)
+                await self._save_session()
+                
                 return
                 
             except FreshRRateLimitError:
@@ -727,10 +904,20 @@ class FreshRApiClient:
                 if r.status == 200:
                     try:
                         data = json.loads(body)
+                        
+                        if DEEP_DEBUG:
+                            _LOGGER.error("\n" + "="*80)
+                            _LOGGER.error("🔐 LOGIN RESPONSE DEBUG")
+                            _LOGGER.error("="*80)
+                            _LOGGER.error(f"Status: {r.status}")
+                            _LOGGER.error(f"Response: {body}")
+                            _LOGGER.error(f"Parsed JSON: {json.dumps(data, indent=2)}")
+                            _LOGGER.error("="*80 + "\n")
+                        
                         if data.get("authenticated") == True:
                             auth_token = data.get("auth_token", "")
                             _LOGGER.info("Login successful - JSON authentication confirmed")
-                            _LOGGER.info("Auth token received: %s...", auth_token[:16] if auth_token else 'None')
+                            _LOGGER.info("Auth token received: %s (length: %d)", auth_token[:16] if auth_token else 'None', len(auth_token) if auth_token else 0)
                             
                             # CRITICAL: Set auth_token as sess_token cookie on dashboard.bw-log.com
                             if auth_token:
@@ -750,6 +937,23 @@ class FreshRApiClient:
                                     _LOGGER.info("  Cookie: %s=%s... (domain=%s)", 
                                                cookie.key, cookie.value[:8] if cookie.value else 'None', 
                                                cookie['domain'])
+                                
+                                # CRITICAL: Browser does GET to dashboard page after login
+                                # This might activate/validate the session token
+                                _LOGGER.info("Performing GET to dashboard to activate session...")
+                                dashboard_url = "https://dashboard.bw-log.com/?page=devices"
+                                dashboard_headers = {
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                }
+                                
+                                try:
+                                    async with s.get(dashboard_url, headers=dashboard_headers, timeout=15) as dash_r:
+                                        _LOGGER.info("Dashboard GET status: %s", dash_r.status)
+                                        if DEEP_DEBUG:
+                                            _LOGGER.error("Dashboard GET completed - session should now be active")
+                                except Exception as e:
+                                    _LOGGER.warning("Dashboard GET failed (non-critical): %s", e)
                             
                             # Success! Session cookies are now set on correct domain
                             return
@@ -923,6 +1127,14 @@ class FreshRApiClient:
                 cookie_parts.append(f"{cookie.key}={cookie.value}")
             cookie_header = "; ".join(cookie_parts)
             
+            # CRITICAL: Browser sends token in QUERY STRING with EMPTY POST body!
+            # Build URL with query string parameter
+            from urllib.parse import urlencode
+            query_params = {
+                "q": json.dumps(api_request, separators=(',', ':'))
+            }
+            api_url_with_query = f"{api_url}?{urlencode(query_params)}"
+            
             headers = {
                 "Accept": "*/*",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -932,14 +1144,11 @@ class FreshRApiClient:
                 "Referer": "https://dashboard.bw-log.com/?page=devices",
             }
             
-            # CRITICAL: Send as POST with query string (like browser), empty body
-            api_url_with_params = f"{api_url}?q={json.dumps(api_request)}"
-            
             if DEEP_DEBUG:
                 _LOGGER.error("\n" + "="*80)
                 _LOGGER.error("🔍 FRESH-R API REQUEST DEBUG")
                 _LOGGER.error("="*80)
-                _LOGGER.error(f"Full URL: {api_url_with_params}")
+                _LOGGER.error(f"URL: {api_url_with_query[:150]}...")
                 _LOGGER.error(f"Method: POST")
                 _LOGGER.error(f"Body: EMPTY (Content-Length: 0)")
                 _LOGGER.error(f"\nHeaders:")
@@ -948,23 +1157,17 @@ class FreshRApiClient:
                         _LOGGER.error(f"  {key}: {value[:80]}...")
                     else:
                         _LOGGER.error(f"  {key}: {value}")
-                _LOGGER.error(f"\nToken in URL: {sess_token[:20]}...")
+                _LOGGER.error(f"\nToken in query string: {sess_token[:20]}...")
                 _LOGGER.error(f"Timezone Offset: {tz_offset}")
-                _LOGGER.error("\n📋 BROWSER COMPARISON:")
-                _LOGGER.error("If this fails, capture browser request and compare:")
-                _LOGGER.error("  1. URL query string - does it match?")
-                _LOGGER.error("  2. Cookie header - all cookies present?")
-                _LOGGER.error("  3. Other headers - X-Requested-With, Origin, Referer?")
-                _LOGGER.error("  4. POST body - should be EMPTY")
                 _LOGGER.error("="*80 + "\n")
             else:
-                _LOGGER.debug("API request URL: %s", api_url_with_params[:100])
+                _LOGGER.debug("API request to: %s", api_url_with_query)
             
             async with s.post(
-                api_url_with_params,
+                api_url_with_query,
                 headers=headers,
                 timeout=DEFAULT_TIMEOUT,
-                allow_redirects=False  # Detect redirects as auth failures
+                allow_redirects=False
             ) as r:
                 body = await r.text()
                 

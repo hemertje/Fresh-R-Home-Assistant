@@ -30,6 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         email      = data[CONF_EMAIL],
         password   = data[CONF_PASSWORD],
         ha_session = session,
+        hass       = hass,  # Enable session persistence
     )
 
     try:

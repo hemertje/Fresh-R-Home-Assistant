@@ -1,36 +1,69 @@
 # Fresh-R Home Assistant Integration - Werkplan
 
-## 📋 PROJECT STATUS: AUTHENTICATION FIXED
+## 📋 PROJECT STATUS: TOKEN MISMATCH PROBLEEM
 
-**Datum:** 14 maart 2026  
-**Status:** Code klaar voor testing na rate limit reset  
-**Versie:** v2.0.6 (authentication fix)
+**Datum:** 16 maart 2026  
+**Status:** Login succesvol maar token invalid voor API calls  
+**Versie:** v2.0.7 (query string fix + token investigation)
 
 ---
 
 ## ✅ VOLTOOIDE TAKEN
 
-### 1. **Authenticatie Probleem Geïdentificeerd en Opgelost**
-**Probleem:** Weken van debugging zonder succes - "Not authenticated" errors  
-**Oorzaak:** Token werd niet in query string JSON gestuurd  
-**Oplossing:** Token toegevoegd aan query string parameter `q`
+### 1. **Authenticatie Formaat Debugging (14-16 maart 2026)**
 
-**Implementatie:**
-```python
-# VOOR (fout):
-POST /api.php
-Body: q={"tzoffset":"60","requests":{...}}
+**Iteratie 1: POST Body met Form Data**
+- **Hypothese:** Browser stuurt `q` parameter in POST body als form-encoded data
+- **Implementatie:** `data={"q": json.dumps(...)}`
+- **Resultaat:** ❌ "Invalid token"
 
-# NA (correct):
-POST /api.php?q={"tzoffset":"60","token":"abc123...","requests":{...}}
-Body: LEEG (Content-Length: 0)
+**Iteratie 2: Query String met Lege Body**
+- **Hypothese:** Browser stuurt `q` parameter in query string
+- **Implementatie:** `POST /api.php?q={...}` met lege body
+- **Resultaat:** ❌ "Invalid token" (maar formaat correct)
+
+**Browser cURL Analyse (16 maart):**
+```bash
+POST /api.php?q=%7B%22tzoffset%22%3A%2260%22%2C%22token%22%3A%22eb3165ad...
+Content-Length: 0
+Cookie: sess_token=eb3165ad...
 ```
 
-**Files aangepast:**
-- `custom_components/fresh_r/api.py` (regel 882-936)
-- Token in query string JSON
-- Browser-like headers toegevoegd
-- Lege POST body
+**Conclusie:** Formaat is NU correct - query string met lege body
+
+### 2. **KRITIEKE ONTDEKKING: Token Mismatch**
+
+**Probleem:** Login API geeft token die NIET werkt voor Dashboard API
+
+**HA Login Flow:**
+```
+POST /login/api/auth.php
+Response: {"authenticated":true,"auth_token":"12db0b64..."}
+→ Set sess_token cookie = 12db0b64...
+→ API call met token 12db0b64...
+→ Result: "Invalid token"
+```
+
+**Browser Flow:**
+```
+Login (oude sessie)
+→ sess_token cookie = eb3165ad...
+→ API call met token eb3165ad...
+→ Result: SUCCESS
+```
+
+**Tokens zijn VERSCHILLEND:**
+- HA login token: `12db0b64ab6ee3f59ff3378fda40ff8ca59bf969a139ed94fa89f262730bdf82`
+- Browser token: `eb3165ad3ec828211366389c60483f80f97c71e4fc429c282cb1f6e0681258c7`
+
+**Hypothese:** Token van login API is NIET de token voor dashboard API  
+**Ontbrekende stap:** Ergens tussen login en API call wordt token "geactiveerd" of "gewisseld"
+
+### 3. **Debugging Toegevoegd**
+- Login response logging (auth_token waarde)
+- Dashboard GET request na login (activatie poging)
+- Volledige request/response logging
+- Cookie jar state tracking
 
 ### 2. **Browser Analyse Instructies Toegevoegd**
 **Doel:** Voorkom 24+ uur debugging zonder complete data
@@ -67,20 +100,26 @@ Body: LEEG (Content-Length: 0)
 ## 🔄 HUIDIGE STATUS
 
 ### **Code Deployment:**
-✅ Gedeployed naar: `\\192.168.2.5\config\custom_components\fresh_r\`  
-✅ Cache gecleared  
-✅ DEEP_DEBUG enabled voor gedetailleerde analyse  
-✅ Auth detector disabled (voorkomt rate limit)
+✅ Query string formaat correct geïmplementeerd  
+✅ Lege POST body correct  
+✅ Alle browser headers aanwezig  
+✅ DEEP_DEBUG enabled voor volledige analyse  
+❌ Token van login API werkt niet voor dashboard API
 
 ### **Rate Limit Status:**
-⏳ **Actief sinds:** 14 maart 10:30  
-⏳ **Reset verwacht:** 14 maart 23:59 of 15 maart 10:30  
-⏳ **Oorzaak:** Auth detector tests (11 login pogingen)
+⏳ **Actief sinds:** 16 maart 21:15  
+⏳ **Reset verwacht:** 17 maart ~21:15  
+⏳ **Oorzaak:** Multiple test attempts tijdens debugging
+
+### **Blokkade:**
+🚫 **Token Mismatch:** Login API geeft token die invalid is voor Dashboard API  
+🚫 **Onbekende stap:** Ergens tussen login en API call ontbreekt een stap  
+🚫 **Geen verse browser login:** Kunnen flow niet analyseren door rate limit
 
 ### **Volgende Test:**
-📅 **Wanneer:** Na rate limit reset  
-📋 **Actie:** Herstart HA → Installeer Fresh-R → Analyseer logs  
-🎯 **Verwacht:** Succesvolle authenticatie en device discovery
+📅 **Wanneer:** Na rate limit reset (17 maart)  
+📋 **Actie:** Browser logout → Clear cookies → Login → HAR export  
+🎯 **Doel:** Vind waar `sess_token` cookie vandaan komt en hoe token wordt geactiveerd
 
 ---
 
@@ -135,33 +174,47 @@ Body: LEEG (Content-Length: 0)
 
 ## 🎯 VOLGENDE STAPPEN
 
-### **Korte Termijn (na rate limit reset):**
+### **KRITIEK: Browser Login Flow Analyse (17 maart)**
 
-1. **Test Fresh-R Installatie**
-   - Herstart Home Assistant
-   - Settings → Devices & Services → Add Integration → Fresh-R
-   - Vul credentials in
-   - Wacht op completion
+**Doel:** Vind waar `sess_token` cookie vandaan komt en waarom login API token niet werkt
 
-2. **Analyseer Logs**
-   - Settings → System → Logs → Search: "fresh_r"
-   - Check voor "🔍 FRESH-R API REQUEST DEBUG"
-   - Verify token in URL query string
-   - Check response voor success
+**Stappen:**
+1. **Browser Preparation**
+   - Logout uit Fresh-R
+   - Clear ALL cookies (fresh-r.me + dashboard.bw-log.com)
+   - F12 → Network tab → Clear
+   - Zorg dat "Preserve log" AAN staat
 
-3. **Bij Success:**
+2. **HAR Export**
+   - Login met credentials
+   - Wacht tot dashboard volledig geladen
+   - Right-click in Network tab → Save all as HAR with content
+   - Upload HAR file voor analyse
+
+3. **Analyse Vragen**
+   - Welke response ZET de `sess_token` cookie? (auth.php? redirect? JavaScript?)
+   - Is `sess_token` waarde GELIJK aan `auth_token` uit JSON?
+   - Zijn er requests TUSSEN auth.php en eerste api.php?
+   - Wordt token "geactiveerd" via een specifieke request?
+
+4. **Implementatie**
+   - Repliceer EXACTE browser flow in HA code
+   - Test met nieuwe token mechanisme
+   - Verify "Invalid token" is opgelost
+
+### **Bij Success:**
    - Verify devices discovered
    - Check sensors created
    - Test data updates
    - Disable DEEP_DEBUG
    - Update versie naar v2.1.0
+   - Commit naar GitHub
 
-4. **Bij Failure:**
-   - Volg "NEXT STEPS - DO NOT GUESS" in logs
-   - Capture browser request (HAR export)
-   - Compare met code request
-   - Identificeer verschil
-   - Fix en test opnieuw
+### **Bij Failure:**
+   - Herhaal HAR analyse met meer detail
+   - Check JavaScript execution (inject.js?)
+   - Mogelijk: Token wordt client-side gegenereerd
+   - Mogelijk: Multi-step authentication flow
 
 ### **Middellange Termijn:**
 
