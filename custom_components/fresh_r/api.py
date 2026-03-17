@@ -919,41 +919,41 @@ class FreshRApiClient:
                             _LOGGER.info("Login successful - JSON authentication confirmed")
                             _LOGGER.info("Auth token received: %s (length: %d)", auth_token[:16] if auth_token else 'None', len(auth_token) if auth_token else 0)
                             
-                            # CRITICAL: Set auth_token as sess_token cookie on dashboard.bw-log.com
+                            # CRITICAL: Browser sends token in URL parameter to activate it
+                            # HAR analysis shows: GET /?page=devices&t={token}
+                            # This activates the token server-side before API calls work
                             if auth_token:
-                                from http.cookies import SimpleCookie
+                                _LOGGER.info("🔑 Activating token via dashboard GET (HAR-verified flow)...")
                                 
-                                # Create sess_token cookie for dashboard.bw-log.com domain
-                                s.cookie_jar.update_cookies(
-                                    {'sess_token': auth_token},
-                                    response_url=aiohttp.client_reqrep.URL('https://dashboard.bw-log.com/')
-                                )
-                                
-                                _LOGGER.info("Set sess_token cookie on dashboard.bw-log.com domain")
-                                
-                                # Log all cookies
-                                _LOGGER.info("Cookies after setting sess_token:")
-                                for cookie in s.cookie_jar:
-                                    _LOGGER.info("  Cookie: %s=%s... (domain=%s)", 
-                                               cookie.key, cookie.value[:8] if cookie.value else 'None', 
-                                               cookie['domain'])
-                                
-                                # CRITICAL: Browser does GET to dashboard page after login
-                                # This might activate/validate the session token
-                                _LOGGER.info("Performing GET to dashboard to activate session...")
-                                dashboard_url = "https://dashboard.bw-log.com/?page=devices"
+                                # Step 1: GET dashboard with token in URL (exactly as browser does)
+                                dashboard_url = f"https://dashboard.bw-log.com/?page=devices&t={auth_token}"
                                 dashboard_headers = {
                                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                    "Referer": "https://fresh-r.me/",  # Coming from login page
                                 }
                                 
                                 try:
-                                    async with s.get(dashboard_url, headers=dashboard_headers, timeout=15) as dash_r:
-                                        _LOGGER.info("Dashboard GET status: %s", dash_r.status)
+                                    async with s.get(dashboard_url, headers=dashboard_headers, timeout=15, allow_redirects=True) as dash_r:
+                                        _LOGGER.info("✅ Dashboard GET status: %s (token activation)", dash_r.status)
+                                        
+                                        # Browser expects 302 redirect to clean URL
+                                        if dash_r.status in (200, 302):
+                                            _LOGGER.info("🎯 Token activated successfully - ready for API calls")
+                                        else:
+                                            _LOGGER.warning("⚠️ Unexpected dashboard response: %s", dash_r.status)
+                                        
                                         if DEEP_DEBUG:
-                                            _LOGGER.error("Dashboard GET completed - session should now be active")
+                                            body = await dash_r.text()
+                                            _LOGGER.error("="*80)
+                                            _LOGGER.error("🔍 DASHBOARD ACTIVATION RESPONSE")
+                                            _LOGGER.error(f"Status: {dash_r.status}")
+                                            _LOGGER.error(f"URL: {dash_r.url}")
+                                            _LOGGER.error(f"Body length: {len(body)} bytes")
+                                            _LOGGER.error("="*80)
                                 except Exception as e:
-                                    _LOGGER.warning("Dashboard GET failed (non-critical): %s", e)
+                                    _LOGGER.error("❌ Dashboard GET failed - token may not be activated: %s", e)
+                                    raise FreshRAuthError(f"Token activation failed: {e}") from e
                             
                             # Success! Session cookies are now set on correct domain
                             return
