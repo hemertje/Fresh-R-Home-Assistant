@@ -1,10 +1,10 @@
 # Fresh-R Home Assistant Integration - Werkplan
 
-## 📋 PROJECT STATUS: TOKEN MISMATCH PROBLEEM
+## 📋 PROJECT STATUS: HAR ANALYSE - WACHT OP VERSE LOGIN
 
-**Datum:** 16 maart 2026  
-**Status:** Login succesvol maar token invalid voor API calls  
-**Versie:** v2.0.7 (query string fix + token investigation)
+**Datum:** 17 maart 2026  
+**Status:** HAR file ontvangen maar van bestaande sessie - verse login HAR nodig  
+**Versie:** v2.0.7 (query string fix + HAR analyse)
 
 ---
 
@@ -65,7 +65,36 @@ Login (oude sessie)
 - Volledige request/response logging
 - Cookie jar state tracking
 
-### 2. **Browser Analyse Instructies Toegevoegd**
+### 4. **HAR File Analyse (17 maart 2026)**
+
+**HAR File Ontvangen:**
+- Bevat bestaande sessie (NIET verse login)
+- Geen `auth.php` request zichtbaar
+- Gebruiker was al ingelogd
+
+**Kritieke Bevindingen:**
+```json
+// Browser gebruikt BEIDE methoden:
+
+// Methode 1: Query string (sommige calls)
+POST /api.php?q={...}
+Content-Length: 0
+
+// Methode 2: POST body (andere calls)
+POST /api.php
+Content-Type: application/x-www-form-urlencoded
+Body: q={...}
+```
+
+**Token in HAR:** `4dd8bf3b36d25e91da0b716d209dd502d87bdb9758469e763a4259ce1f954873`
+
+**Conclusie:**
+- Browser gebruikt BEIDE formaten (query string EN POST body)
+- HAR bevat geen verse login flow
+- Verse login HAR nodig om `auth.php` response te zien
+- Moet Set-Cookie headers checken voor `sess_token` origin
+
+### 5. **Browser Analyse Instructies Toegevoegd**
 **Doel:** Voorkom 24+ uur debugging zonder complete data
 
 **Toegevoegd aan code:**
@@ -107,19 +136,25 @@ Login (oude sessie)
 ❌ Token van login API werkt niet voor dashboard API
 
 ### **Rate Limit Status:**
-⏳ **Actief sinds:** 16 maart 21:15  
-⏳ **Reset verwacht:** 17 maart ~21:15  
-⏳ **Oorzaak:** Multiple test attempts tijdens debugging
+⏳ **Actief sinds:** 17 maart 08:06  
+⏳ **Reset verwacht:** 18 maart ~08:06  
+⏳ **Oorzaak:** Test na query string fix - token nog steeds invalid
+
+### **HAR Analyse Status:**
+✅ **HAR file ontvangen** (17 maart 08:13)  
+❌ **HAR bevat bestaande sessie** - geen verse login  
+❌ **Geen auth.php request** - kunnen token origin niet zien  
+✅ **Browser gebruikt BEIDE formaten** - query string EN POST body
 
 ### **Blokkade:**
-🚫 **Token Mismatch:** Login API geeft token die invalid is voor Dashboard API  
-🚫 **Onbekende stap:** Ergens tussen login en API call ontbreekt een stap  
-🚫 **Geen verse browser login:** Kunnen flow niet analyseren door rate limit
+🚫 **Token Mismatch:** Login API token (`auth_token`) ≠ Browser token (`sess_token`)  
+🚫 **Onbekende origin:** Waar komt werkende `sess_token` vandaan?  
+🚫 **Verse login HAR nodig:** Moet `auth.php` response headers zien
 
 ### **Volgende Test:**
-📅 **Wanneer:** Na rate limit reset (17 maart)  
-📋 **Actie:** Browser logout → Clear cookies → Login → HAR export  
-🎯 **Doel:** Vind waar `sess_token` cookie vandaan komt en hoe token wordt geactiveerd
+📅 **Wanneer:** Na rate limit reset (18 maart ~08:06)  
+📋 **Actie:** Incognito → Verse login → HAR export met auth.php  
+🎯 **Doel:** Vind Set-Cookie header voor `sess_token` of andere token mechanisme
 
 ---
 
