@@ -631,17 +631,22 @@ class FreshRApiClient:
             _LOGGER.warning("Failed to restore session: %s", err)
             return False
 
-    async def _test_token(self) -> bool:
+    async def _test_token(self, session: aiohttp.ClientSession | None = None, token: str | None = None) -> bool:
         """Quick API call to test if current token is still valid.
+        
+        Args:
+            session: Optional session to use (for testing during login)
+            token: Optional token to test (defaults to self._token)
         
         Returns:
             True if token works, False otherwise
         """
-        if not self._token:
+        test_token = token or self._token
+        if not test_token:
             return False
         
         try:
-            s = self._get_session()
+            s = session or self._get_session()
             
             # Quick API call with minimal data
             import time
@@ -649,7 +654,7 @@ class FreshRApiClient:
             
             api_request = {
                 "tzoffset": str(abs(tz_offset)),
-                "token": self._token,
+                "token": test_token,
                 "requests": {
                     "user_info": {
                         "request": "userinfo",
@@ -748,8 +753,11 @@ class FreshRApiClient:
                 # Step 1: Login and activate token (sets self._token internally)
                 await self._login_and_follow_redirect(s)
                 
-                # Token is now set and activated - save session for future use
+                # Token is now set and activated - test it with an API call
                 if self._token:
+                    _LOGGER.info("Testing activated token with API call...")
+                    await self._test_token(s, self._token)
+                    _LOGGER.info("Token validated successfully via API")
                     await self._save_session()
                     return
                 else:

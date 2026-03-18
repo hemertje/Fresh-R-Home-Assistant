@@ -1,10 +1,10 @@
 # Fresh-R Home Assistant Integration - Werkplan
 
-## 📋 PROJECT STATUS: ✅ OPGELOST - TOKEN ACTIVATION FIX
+## 📋 PROJECT STATUS: ✅ GEÏMPLEMENTEERD - WACHT OP RATE LIMIT RESET
 
-**Datum:** 17 maart 2026  
-**Status:** 🎉 AUTHENTICATION ISSUE RESOLVED - Token activation flow geïmplementeerd  
-**Versie:** v2.1.0 (Token activation fix)
+**Datum:** 18 maart 2026  
+**Status:** 🚀 AUTHENTICATION FIX DEPLOYED - Wacht op rate limit reset voor testing  
+**Versie:** v2.1.2 (Token activation + API validation)
 
 ---
 
@@ -136,9 +136,9 @@ Body: q={...}
 ✅ Token activation solution found and implemented
 
 ### **Rate Limit Status:**
-⏳ **Actief sinds:** 17 maart 08:06  
-⏳ **Reset verwacht:** 18 maart ~08:06  
-⏳ **Oorzaak:** Test na query string fix - token nog steeds invalid
+⏳ **Actief sinds:** 18 maart 09:14  
+⏳ **Reset verwacht:** 19 maart ~09:14  
+⏳ **Oorzaak:** Herhaalde test pogingen tijdens Python cache debugging
 
 ### **HAR Analyse Status:**
 ✅ **HAR file ontvangen** (17 maart 08:13)  
@@ -146,15 +146,24 @@ Body: q={...}
 ❌ **Geen auth.php request** - kunnen token origin niet zien  
 ✅ **Browser gebruikt BEIDE formaten** - query string EN POST body
 
-### **Blokkade:**
-🚫 **Token Mismatch:** Login API token (`auth_token`) ≠ Browser token (`sess_token`)  
-🚫 **Onbekende origin:** Waar komt werkende `sess_token` vandaan?  
-🚫 **Verse login HAR nodig:** Moet `auth.php` response headers zien
+### **v2.1.2 Implementation (18 maart 2026):**
+✅ **Token Activation Fix:** `allow_redirects=False` op dashboard GET request  
+✅ **Direct Token Storage:** Token opgeslagen in `self._token` na activation  
+✅ **API Validation:** `_test_token()` aangepast voor session/token parameters  
+✅ **Brand Icon:** `icon.png` (256x256) toegevoegd aan integration  
+⚠️ **Python Cache Issue:** HA laadt oude modules ondanks restart + version bump  
+✅ **Oplossing:** Fresh-R folder volledig verwijderd en opnieuw gedeployed
+
+### **Deployment Status:**
+✅ **Code gedeployed:** v2.1.2 op HA server (18 maart 09:25)  
+✅ **Python cache cleared:** Integration folder verwijderd en opnieuw aangemaakt  
+✅ **Files verified:** manifest.json (v2.1.2), api.py, icon.png aanwezig  
+⏳ **Wacht op rate limit reset:** 19 maart ~09:14
 
 ### **Volgende Test:**
-📅 **Wanneer:** Na rate limit reset (18 maart ~08:06)  
-📋 **Actie:** Incognito → Verse login → HAR export met auth.php  
-🎯 **Doel:** Vind Set-Cookie header voor `sess_token` of andere token mechanisme
+📅 **Wanneer:** Na rate limit reset (19 maart ~09:14)  
+📋 **Actie:** Fresh-R integration toevoegen in HA  
+🎯 **Verwacht:** Token activation → API validation → Device discovery via API
 
 ---
 

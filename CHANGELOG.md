@@ -5,6 +5,43 @@ All notable changes to the Fresh-R Home Assistant Integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-03-18
+
+### 🔧 Fixed - Token Activation Redirect Handling
+
+**CRITICAL FIX: Dashboard Activation Redirect**
+
+The token activation GET request was following redirects to the login page, preventing proper token activation.
+
+#### Changes
+- **Token Activation:** Set `allow_redirects=False` on dashboard GET request to prevent redirect loops
+- **Direct Token Storage:** Store `auth_token` directly in `self._token` after activation (no cookie dependency)
+- **API Validation:** Enhanced `_test_token()` to accept session and token parameters for validation during login
+- **Brand Icon:** Added `icon.png` (256x256px) for Home Assistant brand selector
+
+#### Technical Details
+```python
+# Dashboard activation now prevents redirects
+async with s.get(dashboard_url, headers=headers, timeout=15, allow_redirects=False) as dash_r:
+    if dash_r.status == 302:
+        _LOGGER.info("🎯 Token activated successfully (302 redirect)")
+    # Store token directly
+    self._token = auth_token
+```
+
+#### Deployment Notes
+- **Python Cache Issue:** Home Assistant aggressively caches Python modules
+- **Solution:** Complete integration folder deletion and redeployment required for code updates
+- **Version Bump:** Helps but not sufficient - physical file deletion needed
+
+### 📦 Added
+- Brand icon (`icon.png`) for integration display in Home Assistant UI
+- Enhanced token validation with session parameter support
+
+### 🐛 Fixed
+- Token activation redirect loop causing authentication failures
+- Cookie dependency removed - direct token storage more reliable
+
 ## [2.1.0] - 2026-03-17
 
 ### 🎉 Fixed - Authentication Issue RESOLVED
