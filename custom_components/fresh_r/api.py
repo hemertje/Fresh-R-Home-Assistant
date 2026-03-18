@@ -745,26 +745,15 @@ class FreshRApiClient:
                     _LOGGER.info("Retry attempt %d/%d after %.1fs delay", attempt + 1, MAX_RETRIES, delay)
                     await asyncio.sleep(delay)
                 
-                # Step 1: Login and get redirected to devices page
+                # Step 1: Login and activate token (sets self._token internally)
                 await self._login_and_follow_redirect(s)
                 
-                # Step 2: Extract session token and serial numbers from devices page
-                token = await self._extract_from_devices_page(s)
-
-                if not token:
-                    raise FreshRAuthError(
-                        "Login failed — no session token found on devices page. "
-                        "Verify your credentials at fresh-r.me"
-                    )
-
-                self._token = token
-                self._token_time = datetime.now(timezone.utc)
-                _LOGGER.info("Fresh-r authenticated successfully (token=%.8s…)", token)
-                
-                # Save session for future use (mimic browser persistence)
-                await self._save_session()
-                
-                return
+                # Token is now set and activated - save session for future use
+                if self._token:
+                    await self._save_session()
+                    return
+                else:
+                    raise FreshRAuthError("Login failed - no token received from auth API")
                 
             except FreshRRateLimitError:
                 # Don't retry on rate limit - set backoff and re-raise
@@ -926,6 +915,7 @@ class FreshRApiClient:
                                 _LOGGER.info("🔑 Activating token via dashboard GET (HAR-verified flow)...")
                                 
                                 # Step 1: GET dashboard with token in URL (exactly as browser does)
+                                # Don't follow redirects - just make the request to activate token
                                 dashboard_url = f"https://dashboard.bw-log.com/?page=devices&t={auth_token}"
                                 dashboard_headers = {
                                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -934,23 +924,30 @@ class FreshRApiClient:
                                 }
                                 
                                 try:
-                                    async with s.get(dashboard_url, headers=dashboard_headers, timeout=15, allow_redirects=True) as dash_r:
+                                    async with s.get(dashboard_url, headers=dashboard_headers, timeout=15, allow_redirects=False) as dash_r:
                                         _LOGGER.info("✅ Dashboard GET status: %s (token activation)", dash_r.status)
                                         
-                                        # Browser expects 302 redirect to clean URL
-                                        if dash_r.status in (200, 302):
-                                            _LOGGER.info("🎯 Token activated successfully - ready for API calls")
+                                        # Server should return 302 redirect after activating token
+                                        if dash_r.status == 302:
+                                            _LOGGER.info("🎯 Token activated successfully (302 redirect) - ready for API calls")
+                                        elif dash_r.status == 200:
+                                            _LOGGER.info("🎯 Token activated successfully (200 OK) - ready for API calls")
                                         else:
                                             _LOGGER.warning("⚠️ Unexpected dashboard response: %s", dash_r.status)
                                         
                                         if DEEP_DEBUG:
-                                            body = await dash_r.text()
                                             _LOGGER.error("="*80)
                                             _LOGGER.error("🔍 DASHBOARD ACTIVATION RESPONSE")
                                             _LOGGER.error(f"Status: {dash_r.status}")
                                             _LOGGER.error(f"URL: {dash_r.url}")
-                                            _LOGGER.error(f"Body length: {len(body)} bytes")
+                                            _LOGGER.error(f"Headers: {dict(dash_r.headers)}")
                                             _LOGGER.error("="*80)
+                                            
+                                        # Store token directly - don't rely on cookies
+                                        self._token = auth_token
+                                        self._token_time = datetime.now(timezone.utc)
+                                        _LOGGER.info("Fresh-r authenticated successfully (token=%.8s…)", auth_token)
+                                        
                                 except Exception as e:
                                     _LOGGER.error("❌ Dashboard GET failed - token may not be activated: %s", e)
                                     raise FreshRAuthError(f"Token activation failed: {e}") from e
