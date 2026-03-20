@@ -654,7 +654,7 @@ class FreshRApiClient:
             
             api_request = {
                 "tzoffset": str(abs(tz_offset)),
-                "token": test_token,
+                "token": "",  # Empty token - PHPSESSID cookie handles authentication
                 "requests": {
                     "user_info": {
                         "request": "userinfo",
@@ -672,16 +672,22 @@ class FreshRApiClient:
             }
             api_url_with_query = f"{api_url}?{urlencode(query_params)}"
             
-            # Build cookie header
+            # Build cookie header - PHPSESSID is the authentication
             cookie_parts = []
             for cookie in s.cookie_jar:
-                cookie_parts.append(f"{cookie.key}={cookie.value}")
+                if cookie.key == "PHPSESSID" and "dashboard.bw-log.com" in str(cookie['domain']):
+                    cookie_parts.append(f"{cookie.key}={cookie.value}")
+                    break
             cookie_header = "; ".join(cookie_parts)
             
             headers = {
                 "Accept": "*/*",
                 "Cookie": cookie_header,
             }
+            
+            if DEEP_DEBUG:
+                _LOGGER.error("🔍 API TEST REQUEST - URL: %s", api_url_with_query)
+                _LOGGER.error("🔍 API TEST REQUEST - Cookie: %s", cookie_header)
             
             async with s.post(
                 api_url_with_query,
@@ -690,10 +696,14 @@ class FreshRApiClient:
                 allow_redirects=False
             ) as r:
                 if r.status != 200:
+                    _LOGGER.debug("API test failed with status: %s", r.status)
                     return False
                 
                 body = await r.text()
                 data = _safe_json_parse(body, "Token test")
+                
+                if DEEP_DEBUG:
+                    _LOGGER.error("🔍 API TEST RESPONSE - Status: %s, Body: %.500s", r.status, body[:500])
                 
                 # Check if authenticated
                 if "user_info" in data:
@@ -872,14 +882,13 @@ class FreshRApiClient:
         except aiohttp.ClientError as e:
             _LOGGER.warning("GET login page failed: %s", e)
         
-        # POST credentials - Fresh-R returns JSON, not redirect
+        # POST credentials - Expect 302 redirect like browser
         form = {"email": self._email, "password": self._password}
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json, */*",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Origin": "https://fresh-r.me",
             "Referer": login_page_url,
-            "X-Requested-With": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
         
@@ -887,18 +896,49 @@ class FreshRApiClient:
             if s.closed:
                 s = self._get_session()
                 
+            # FOLLOW redirects like browser - expect 302 to dashboard
             async with s.post(
                 login_api_url,
                 data=form,
                 headers=headers,
-                allow_redirects=False,  # Don't follow redirects - we handle JSON
+                allow_redirects=True,  # FOLLOW redirects - browser behavior!
                 timeout=20,
             ) as r:
                 body = await r.text()
                 _LOGGER.debug("Login API response status: %s", r.status)
+                _LOGGER.debug("Login final URL: %s", r.url)
                 
-                # Fresh-R returns JSON response
-                if r.status == 200:
+                # Log cookies after login
+                if DEEP_DEBUG:
+                    _LOGGER.error("🍪 COOKIES AFTER LOGIN:")
+                    for cookie in s.cookie_jar:
+                        _LOGGER.error("  - %s = %s (domain: %s, path: %s)", 
+                                    cookie.key, cookie.value[:20] + "..." if len(cookie.value) > 20 else cookie.value, 
+                                    str(cookie['domain']), str(cookie['path']))
+                
+                # Check if we ended up on dashboard (success)
+                if r.status == 200 and "dashboard.bw-log.com" in r.url:
+                    _LOGGER.info("✅ Login successful - redirected to dashboard")
+                    _LOGGER.info("Final URL: %s", r.url)
+                    
+                    # Extract PHPSESSID cookie for API calls
+                    php_sessid = None
+                    for cookie in s.cookie_jar:
+                        if cookie.key == "PHPSESSID" and "dashboard.bw-log.com" in str(cookie['domain']):
+                            php_sessid = cookie.value
+                            break
+                    
+                    if php_sessid:
+                        _LOGGER.info("🔑 PHPSESSID cookie found: %s...", php_sessid[:8])
+                        self._token = php_sessid  # Store PHPSESSID as our token
+                        self._token_time = datetime.now(timezone.utc)
+                        return
+                    else:
+                        _LOGGER.error("❌ No PHPSESSID cookie found after login")
+                        raise FreshRAuthError("Login failed - no session cookie received")
+                
+                # Fallback: Check for JSON response (old behavior)
+                if r.status == 200 and body.startswith('{'):
                     try:
                         data = json.loads(body)
                         
