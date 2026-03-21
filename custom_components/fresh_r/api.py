@@ -71,7 +71,7 @@ LOGIN_TIMEOUT = 45    # seconds (login can take longer)
 
 # Live monitoring configuration
 LIVE_MONITORING = False  # Set to False for production
-DEEP_DEBUG = True  # Enabled for detailed request/response analysis (auth_detector disabled)
+DEEP_DEBUG = False  # Enable via code only when needed; use logger: custom_components.fresh_r: debug
 
 # Resource limits
 MAX_MONITOR_CACHE = 100  # Max cached requests/responses
@@ -119,6 +119,15 @@ class FreshRDataValidationError(Exception):
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _safe_str_for_in(value: object) -> str:
+    """Coerce to str before substring checks like ``\"x\" in value``.
+
+    aiohttp/yarl may return ``yarl.URL`` for response URLs and cookie domains.
+    Using ``\"sub\" in url_obj`` raises *TypeError: URL is not a container or iterable*.
+    """
+    return "" if value is None else str(value)
+
 
 def calibrate_flow(raw: float) -> float:
     """Apply ESP mode flow correction (from dashboard.js)."""
@@ -651,49 +660,34 @@ class FreshRApiClient:
             # Quick API call with minimal data
             import time
             tz_offset = int(time.timezone / 60)
-            
+
+            # Same shape as _call(): token + tzoffset + requests inside JSON param `q`.
+            # Session cookie jar is applied automatically by aiohttp.
             api_request = {
                 "tzoffset": str(abs(tz_offset)),
-                "token": "",  # Empty token - PHPSESSID cookie handles authentication
+                "token": test_token,
                 "requests": {
                     "user_info": {
                         "request": "userinfo",
-                        "fields": ["first_name"]
+                        "fields": ["first_name"],
                     }
-                }
+                },
             }
-            
-            api_url = "https://dashboard.bw-log.com/api.php"
-            
-            # Browser sends token in QUERY STRING with EMPTY POST body
-            from urllib.parse import urlencode
-            query_params = {
-                "q": json.dumps(api_request, separators=(',', ':'))
-            }
-            api_url_with_query = f"{api_url}?{urlencode(query_params)}"
-            
-            # Build cookie header - PHPSESSID is the authentication
-            cookie_parts = []
-            for cookie in s.cookie_jar:
-                if cookie.key == "PHPSESSID" and "dashboard.bw-log.com" in str(cookie['domain']):
-                    cookie_parts.append(f"{cookie.key}={cookie.value}")
-                    break
-            cookie_header = "; ".join(cookie_parts)
-            
+            q = json.dumps(api_request, separators=(",", ":"))
             headers = {
+                "X-Requested-With": "XMLHttpRequest",
+                "Origin": "https://dashboard.bw-log.com",
+                "Referer": "https://dashboard.bw-log.com/?page=devices",
                 "Accept": "*/*",
-                "Cookie": cookie_header,
             }
-            
             if DEEP_DEBUG:
-                _LOGGER.error("🔍 API TEST REQUEST - URL: %s", api_url_with_query)
-                _LOGGER.error("🔍 API TEST REQUEST - Cookie: %s", cookie_header)
-            
+                _LOGGER.error("🔍 API TEST (userinfo) params q token prefix: %.12s…", test_token[:12])
             async with s.post(
-                api_url_with_query,
+                API_URL,
+                params={"q": q},
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=10),
-                allow_redirects=False
+                allow_redirects=False,
             ) as r:
                 if r.status != 200:
                     _LOGGER.debug("API test failed with status: %s", r.status)
@@ -886,9 +880,10 @@ class FreshRApiClient:
         form = {"email": self._email, "password": self._password}
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept": "application/json, text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8",
             "Origin": "https://fresh-r.me",
             "Referer": login_page_url,
+            "X-Requested-With": "XMLHttpRequest",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
         
@@ -917,25 +912,54 @@ class FreshRApiClient:
                                     str(cookie['domain']), str(cookie['path']))
                 
                 # Check if we ended up on dashboard (success)
-                if r.status == 200 and "dashboard.bw-log.com" in r.url:
+                if r.status == 200 and "dashboard.bw-log.com" in _safe_str_for_in(r.url):
                     _LOGGER.info("✅ Login successful - redirected to dashboard")
                     _LOGGER.info("Final URL: %s", r.url)
-                    
-                    # Extract PHPSESSID cookie for API calls
+
+                    # HAR/browser: token in query ?t=... (same hex as auth_token path)
+                    parsed_final = urlparse(_safe_str_for_in(r.url))
+                    url_token = (parse_qs(parsed_final.query).get("t") or [None])[0]
+                    if url_token:
+                        self._token = url_token
+                        self._token_time = datetime.now(timezone.utc)
+                        _LOGGER.info(
+                            "🔑 Token from dashboard URL (t=): %.8s…",
+                            url_token,
+                        )
+                        return
+
+                    # sess_token cookie (Hex) if present
+                    sess_from_jar = None
+                    for cookie in s.cookie_jar:
+                        if cookie.key == "sess_token" and "bw-log.com" in _safe_str_for_in(
+                            cookie["domain"]
+                        ):
+                            sess_from_jar = cookie.value
+                            break
+                    if sess_from_jar and _TOKEN_RE.match(sess_from_jar):
+                        self._token = sess_from_jar
+                        self._token_time = datetime.now(timezone.utc)
+                        _LOGGER.info(
+                            "🔑 Using sess_token cookie for API: %.8s…", sess_from_jar
+                        )
+                        return
+
+                    # Fallback: PHPSESSID session id for api.php `token` + cookie jar
                     php_sessid = None
                     for cookie in s.cookie_jar:
-                        if cookie.key == "PHPSESSID" and "dashboard.bw-log.com" in str(cookie['domain']):
+                        if cookie.key == "PHPSESSID" and "dashboard.bw-log.com" in _safe_str_for_in(
+                            cookie["domain"]
+                        ):
                             php_sessid = cookie.value
                             break
                     
                     if php_sessid:
                         _LOGGER.info("🔑 PHPSESSID cookie found: %s...", php_sessid[:8])
-                        self._token = php_sessid  # Store PHPSESSID as our token
+                        self._token = php_sessid
                         self._token_time = datetime.now(timezone.utc)
                         return
-                    else:
-                        _LOGGER.error("❌ No PHPSESSID cookie found after login")
-                        raise FreshRAuthError("Login failed - no session cookie received")
+                    _LOGGER.error("❌ No dashboard token (t=), sess_token, or PHPSESSID")
+                    raise FreshRAuthError("Login failed - no session/token after redirect")
                 
                 # Fallback: Check for JSON response (old behavior)
                 if r.status == 200 and body.startswith('{'):
@@ -981,7 +1005,9 @@ class FreshRApiClient:
                                         elif dash_r.status == 200:
                                             _LOGGER.info("🎯 Token activated successfully (200 OK) - ready for API calls")
                                         else:
-                                            _LOGGER.warning("⚠️ Unexpected dashboard response: %s", dash_r.status)
+                                            raise FreshRAuthError(
+                                                f"Token activation failed (unexpected dashboard HTTP {dash_r.status})"
+                                            )
                                         
                                         if DEEP_DEBUG:
                                             _LOGGER.error("="*80)
@@ -1252,7 +1278,7 @@ class FreshRApiClient:
                 
                 # Check for redirects (indicates auth failure)
                 if r.status in (301, 302, 303, 307, 308):
-                    redirect_url = r.headers.get('Location', 'unknown')
+                    redirect_url = _safe_str_for_in(r.headers.get("Location"))
                     _LOGGER.error("Redirected to %s - session token likely expired", redirect_url)
                     if 'login' in redirect_url.lower() or 'vaventis' in redirect_url.lower():
                         raise FreshRTokenExpiredError("Session expired - redirected to login page")
@@ -1509,11 +1535,11 @@ class FreshRApiClient:
                 self._log_response(r.status, str(r.url), dict(r.headers), body, s.cookie_jar)
                 
                 # Check if we're redirected to dashboard (success!)
-                if "dashboard.bw-log.com" in str(r.url) and "page=devices" in str(r.url):
+                if "dashboard.bw-log.com" in _safe_str_for_in(r.url) and "page=devices" in _safe_str_for_in(r.url):
                     _LOGGER.info("Login successful - redirected to dashboard: %s", r.url)
                     # Extract token from redirect URL parameter
                     from urllib.parse import urlparse, parse_qs
-                    parsed = urlparse(str(r.url))
+                    parsed = urlparse(_safe_str_for_in(r.url))
                     token = parse_qs(parsed.get('query', '')).get('t', [None])[0]
                     if token:
                         return token
@@ -1635,7 +1661,11 @@ class FreshRApiClient:
 
     # ── Current data ───────────────────────────────────────────────────────────
 
-    async def get_current_data(self) -> dict[str, float]:
+    async def async_get_current(self, serial: str) -> dict[str, float]:
+        """Home Assistant coordinator entrypoint: fetch values for one device serial."""
+        return await self.get_current_data(serial)
+
+    async def get_current_data(self, serial: str) -> dict[str, float]:
         """Fetch current sensor values for the configured device.
         Returns a dict with calibrated values (flow, temps, etc.).
         
@@ -1667,7 +1697,7 @@ class FreshRApiClient:
                         _LOGGER.info("Retry data fetch attempt %d/%d after %.1fs", attempt + 1, MAX_RETRIES, delay)
                         await asyncio.sleep(delay)
                     
-                    raw_data = await self._fetch_current_data()
+                    raw_data = await self._fetch_current_data(serial)
                     
                     # Validate sensor data before returning
                     validated_data = _validate_sensor_data(raw_data)
@@ -1681,7 +1711,7 @@ class FreshRApiClient:
                     try:
                         await self.async_login(force=True)
                         # Retry immediately after refresh
-                        raw_data = await self._fetch_current_data()
+                        raw_data = await self._fetch_current_data(serial)
                         return _validate_sensor_data(raw_data)
                     except FreshRRateLimitError:
                         # Can't refresh due to rate limit
@@ -1707,7 +1737,7 @@ class FreshRApiClient:
             # Should never reach here
             raise FreshRConnectionError(f"Failed to fetch data: {last_error}")
     
-    async def _fetch_current_data(self) -> dict[str, float]:
+    async def _fetch_current_data(self, serial: str) -> dict[str, float]:
         """Internal method to fetch current data without retry logic.
         
         Raises:
@@ -1729,8 +1759,8 @@ class FreshRApiClient:
             raw = await self._call({
                 "current-data": {
                     "request": "fresh-r-now",
-                    "serial":  serial,
-                    "fields":  FIELDS_NOW,
+                    "serial": serial,
+                    "fields": FIELDS_NOW,
                 }
             })
         except FreshRConnectionError:
@@ -1739,8 +1769,8 @@ class FreshRApiClient:
             raw = await self._call({
                 "current-data": {
                     "request": "fresh-r-now",
-                    "serial":  serial,
-                    "fields":  FIELDS_NOW,
+                    "serial": serial,
+                    "fields": FIELDS_NOW,
                 }
             })
         return self._parse(raw.get("current-data", {}))
