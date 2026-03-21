@@ -12,15 +12,6 @@ A Home Assistant custom integration that **reads** data from the [Fresh-r.me](ht
 >
 > **No historical data** — The Fresh-r.me database cannot be queried. Home Assistant's own recorder builds history going forward from the moment the integration is active.
 
-### Deploy naar Home Assistant (SMB)
-
-| Platform | Commando |
-|----------|----------|
-| **Windows** | Dubbelklik `deploy_fresh_r.bat` (kopieert naar `\\192.168.2.5\config\custom_components\fresh_r`) |
-| **macOS** | 1) Finder → *Verbinden met server* → `smb://192.168.2.5/config`  2) `./deploy_fresh_r.sh` |
-
-Daarna: **Home Assistant herstarten**. Zonder gemounte `config`-share faalt het Mac-script met een duidelijke melding; pas `HA_DEPLOY_DEST` aan als je share ergens anders mount.
-
 ---
 
 ## 🎯 **v2.0.5 - MAJOR BREAKTHROUGH**
@@ -382,16 +373,14 @@ The integration first tries the JSON API (`syssearch`), then falls back to scrap
 **Login OK but sensors stay `unavailable`**
 
 - Check logs for `AttributeError` on `async_get_current` or `NameError` for `serial` in the data poll path (fixed in v2.2.3+).
+- On HA with Python 3.14 / newer aiohttp, login error `argument of type 'URL' is not a container or iterable` → upgrade integration to **v2.2.4+** (deploy opnieuw).
 - Ensure `configuration.yaml` logger includes `custom_components.fresh_r: debug` while diagnosing.
 
 ---
 
-## Deploy naar Home Assistant (Mac + SMB)
+## Deploy (samenvatting)
 
-**Plan, Definition of Done en escalatie:** [docs/DEPLOY_HA_SMB.md](docs/DEPLOY_HA_SMB.md)
-
-Lokaal (geen netwerk): `./scripts/verify_fresh_r_deploy_ready.sh`  
-Deploy: `./scripts/smb_deploy_to_ha.sh --src ./custom_components/fresh_r --dst custom_components/fresh_r` (standaard: **tar**; `icons/` wordt overgeslagen — niet nodig voor HA; zie `docs/DEPLOY_HA_SMB.md`)
+Zie de tabel **Deploy naar Home Assistant (SMB)** bovenaan dit document — scripts: **`deploy_fresh_r.sh`** / **`deploy_fresh_r.bat`**.
 
 ---
 
