@@ -22,6 +22,9 @@ RSYNC_DEST="${HA_DEPLOY_DEST:-/Volumes/config/custom_components/fresh_r}"
 SMB_SERVER="${SMB_SERVER:-192.168.2.5}"
 SMB_SHARE="${SMB_SHARE:-config}"
 SMB_USER="${SMB_USER:-homeassistant}"
+# set -u: altijd gezet vóór "${SMB_EXTRA[@]}" in subshells/pipelines
+SMB_AUTH_ARGS=()
+SMB_EXTRA=()
 
 _find_smbclient() {
   if command -v smbclient >/dev/null 2>&1; then
@@ -90,13 +93,47 @@ _deploy_smbclient() {
   local smbclient_bin="$1"
   shift
   local auth_args=("$@")
+  local base="$SCRIPT_DIR/custom_components/fresh_r"
+  local batch
+  batch=$(mktemp)
+  # shellcheck disable=SC2064
+  trap "rm -f '$batch'" RETURN
 
-  echo "→ Methode: smbclient → //$SMB_SERVER/$SMB_SHARE → custom_components/fresh_r"
+  echo "→ Methode: smbclient (batch mkdir+put) → //$SMB_SERVER/$SMB_SHARE/custom_components/fresh_r"
+  echo "   (Homebrew smbclient heeft geen tar-modus zonder libarchive — daarom per bestand)"
 
-  ( cd "${SCRIPT_DIR}/custom_components" && \
-    tar --exclude='__pycache__' --exclude='*.pyc' -cf - fresh_r ) \
-    | "$smbclient_bin" "//$SMB_SERVER/$SMB_SHARE" "${auth_args[@]}" "${SMB_EXTRA[@]}" \
-      -c "cd custom_components; tar xf -"
+  {
+    echo "cd custom_components"
+    echo "mkdir fresh_r"
+    echo "cd fresh_r"
+    # mkdir alleen laatste segment na cd fresh_r (smbclient accepteert geen fresh_r/icons in één mkdir op alle servers)
+    find "$base" -mindepth 1 -type d 2>/dev/null | while IFS= read -r d; do
+      rel="${d#$base/}"
+      echo "$rel"
+    done | awk -F/ '{print NF-1, $0}' | sort -n | cut -d' ' -f2- | while IFS= read -r rel; do
+      [[ -n "$rel" ]] && printf 'mkdir "%s"\n' "${rel//\"/\\\"}"
+    done
+    find "$base" -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 |
+      while IFS= read -r -d '' f; do
+        rel="${f#$base/}"
+        printf 'put "%s" "%s"\n' "${f//\"/\\\"}" "${rel//\"/\\\"}"
+      done
+  } >"$batch"
+
+  "$smbclient_bin" "//$SMB_SERVER/$SMB_SHARE" "${auth_args[@]}" -b 8192 <"$batch"
+
+  # Sommige SMB-stacks falen op mkdir icons in één batch — fallback per SVG
+  if [[ -d "$base/icons" ]]; then
+    for svg in "$base/icons"/*; do
+      [[ -f "$svg" ]] || continue
+      bn=$(basename "$svg")
+      "$smbclient_bin" "//$SMB_SERVER/$SMB_SHARE" "${auth_args[@]}" \
+        -c "cd custom_components/fresh_r; mkdir icons; put \"$svg\" \"icons/$bn\"" 2>/dev/null \
+        || "$smbclient_bin" "//$SMB_SERVER/$SMB_SHARE" "${auth_args[@]}" \
+          -c "cd custom_components/fresh_r/icons; put \"$svg\" \"$bn\"" 2>/dev/null \
+        || echo "   (waarschuwing) kon niet uploaden: icons/$bn — kopieer handmatig of gebruik deploy_fresh_r.bat"
+    done
+  fi
 
   echo "   Upload voltooid."
 }
@@ -142,7 +179,12 @@ if [[ ${#SMB_AUTH_ARGS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-_deploy_smbclient "$SC" "${SMB_AUTH_ARGS[@]}"
+# Extra smbclient-opties (SMB_EXTRA_OPTS) samenvoegen — niet in functie met local + set -u combineren
+CLIENT_SMB_ARGS=("${SMB_AUTH_ARGS[@]}")
+if [[ -n "${SMB_EXTRA+x}" ]] && [[ ${#SMB_EXTRA[@]} -gt 0 ]]; then
+  CLIENT_SMB_ARGS+=("${SMB_EXTRA[@]}")
+fi
+_deploy_smbclient "$SC" "${CLIENT_SMB_ARGS[@]}"
 
 echo "→ Klaar. Herstart Home Assistant (Instellingen → Systeem → Herstart)."
 echo "   Controleer in HA dat custom_components/fresh_r/manifest.json versie 2.2.4 heeft."
