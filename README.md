@@ -373,14 +373,20 @@ The integration first tries the JSON API (`syssearch`), then falls back to scrap
 **Login OK but sensors stay `unavailable`**
 
 - Check logs for `AttributeError` on `async_get_current` or `NameError` for `serial` in the data poll path (fixed in v2.2.3+).
-- On HA with Python 3.14 / newer aiohttp, login error `argument of type 'URL' is not a container or iterable` → upgrade integration to **v2.2.4+** (deploy opnieuw).
+- On HA with Python 3.14 / newer aiohttp, login error `argument of type 'URL' is not a container or iterable` → upgrade integration to **v2.2.4+** (opnieuw deployen).
 - Ensure `configuration.yaml` logger includes `custom_components.fresh_r: debug` while diagnosing.
 
 ---
 
-## Deploy (samenvatting)
+## Deploy naar Home Assistant (SMB)
 
-Zie de tabel **Deploy naar Home Assistant (SMB)** bovenaan dit document — scripts: **`deploy_fresh_r.sh`** / **`deploy_fresh_r.bat`**.
+| Platform | Commando |
+|----------|----------|
+| **Windows** | `deploy_fresh_r.bat` → `\\192.168.2.5\config\custom_components\fresh_r` |
+| **macOS (share gemount)** | Finder → `smb://192.168.2.5/config`, daarna `./deploy_fresh_r.sh` |
+| **macOS (smbclient)** | `brew install samba` → `./deploy_fresh_r.sh` — wachtwoord wordt uit de **macOS-sleutelhanger** gehaald als je eerder via Finder op `smb://192.168.2.5` bent ingelogd (eerste keer vraagt macOS om toestemming). Anders: `export SMB_PASSWORD='…'` of `~/.config/hass-smb-credentials`. Uitzetten: `SMB_SKIP_KEYCHAIN=1`. |
+
+Daarna **Home Assistant herstarten**.
 
 ---
 
