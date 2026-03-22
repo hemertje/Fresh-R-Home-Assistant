@@ -25,9 +25,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 from datetime import datetime, timezone, timedelta
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import aiohttp
 from aiohttp import ClientConnectorError, ClientSSLError, ServerTimeoutError
@@ -215,23 +216,26 @@ def _validate_sensor_data(data: dict) -> dict[str, float]:
         except (ValueError, TypeError) as err:
             _LOGGER.warning("Invalid CO2 value: %s (%s)", data['co2'], err)
     
-    # Humidity validation
-    if 'humidity' in data:
+    # Humidity validation (API field is ``hum``; accept ``humidity`` too)
+    _hum_raw = data.get("humidity", data.get("hum"))
+    if _hum_raw is not None:
         try:
-            hum = float(data['humidity'])
+            hum = float(_hum_raw)
             if HUMIDITY_MIN <= hum <= HUMIDITY_MAX:
-                validated['humidity'] = hum
+                validated["hum"] = hum
             else:
                 _LOGGER.warning(
                     "Humidity out of range: %.1f%% (valid: %.0f to %.0f%%)",
                     hum, HUMIDITY_MIN, HUMIDITY_MAX
                 )
         except (ValueError, TypeError) as err:
-            _LOGGER.warning("Invalid humidity value: %s (%s)", data['humidity'], err)
+            _LOGGER.warning("Invalid humidity value: %s (%s)", _hum_raw, err)
     
     # Copy other fields without validation
     for key in data:
-        if key not in validated and key not in ['t1', 't2', 't3', 't4', 'flow', 'co2', 'humidity']:
+        if key not in validated and key not in [
+            "t1", "t2", "t3", "t4", "flow", "co2", "humidity", "hum",
+        ]:
             try:
                 validated[key] = float(data[key])
             except (ValueError, TypeError):
@@ -280,6 +284,31 @@ def derive(data: dict[str, float]) -> dict[str, float]:
         "vent_loss":      round(max(0.0, (t1 - t2) * REF_FLOW * AIR_HEAT_CAP / 3600), 1),
         "energy_loss":    round(max(0.0, (t1 - t4) * flow  * AIR_HEAT_CAP / 3600), 1),
     }
+
+
+def water_vapor_g_m3(t_celsius: float, rh_percent: float) -> float:
+    """Absolute humidity (g/m³) from indoor °C and RH% — matches Fresh-r humidity tab."""
+    # Magnus over water; coefficient 2.166 → g/m³ (typical HVAC / psychrometric form)
+    es = 6.112 * math.exp((17.67 * t_celsius) / (t_celsius + 243.5))
+    e = es * rh_percent / 100.0
+    return round(2.166 * e / (273.15 + t_celsius), 2)
+
+
+def _fresh_r_now_request_key(serial: str) -> str:
+    """HAR/browser use ``<serial>_current`` as the ``requests`` key for fresh-r-now."""
+    return f"{serial}_current"
+
+
+def _sync_dashboard_auth_cookie(
+    jar: aiohttp.CookieJar, token: str | None
+) -> None:
+    """Mirror browser: set ``auth_token`` on dashboard host when we have a hex session token."""
+    if not token or not _TOKEN_RE.match(token):
+        return
+    jar.update_cookies(
+        {"auth_token": token},
+        URL("https://dashboard.bw-log.com"),
+    )
 
 
 def _token_in_jar(jar: aiohttp.CookieJar) -> str | None:
@@ -922,6 +951,7 @@ class FreshRApiClient:
                     if url_token:
                         self._token = url_token
                         self._token_time = datetime.now(timezone.utc)
+                        _sync_dashboard_auth_cookie(s.cookie_jar, url_token)
                         _LOGGER.info(
                             "🔑 Token from dashboard URL (t=): %.8s…",
                             url_token,
@@ -939,6 +969,7 @@ class FreshRApiClient:
                     if sess_from_jar and _TOKEN_RE.match(sess_from_jar):
                         self._token = sess_from_jar
                         self._token_time = datetime.now(timezone.utc)
+                        _sync_dashboard_auth_cookie(s.cookie_jar, sess_from_jar)
                         _LOGGER.info(
                             "🔑 Using sess_token cookie for API: %.8s…", sess_from_jar
                         )
@@ -957,6 +988,7 @@ class FreshRApiClient:
                         _LOGGER.info("🔑 PHPSESSID cookie found: %s...", php_sessid[:8])
                         self._token = php_sessid
                         self._token_time = datetime.now(timezone.utc)
+                        _sync_dashboard_auth_cookie(s.cookie_jar, php_sessid)
                         return
                     _LOGGER.error("❌ No dashboard token (t=), sess_token, or PHPSESSID")
                     raise FreshRAuthError("Login failed - no session/token after redirect")
@@ -1020,6 +1052,7 @@ class FreshRApiClient:
                                         # Store token directly - don't rely on cookies
                                         self._token = auth_token
                                         self._token_time = datetime.now(timezone.utc)
+                                        _sync_dashboard_auth_cookie(s.cookie_jar, auth_token)
                                         _LOGGER.info("Fresh-r authenticated successfully (token=%.8s…)", auth_token)
                                         
                                 except Exception as e:
@@ -1610,54 +1643,110 @@ class FreshRApiClient:
         return await self._discover_from_html()
 
     async def _discover_from_html(self) -> list[dict]:
-        """GET dashboard.bw-log.com/?page=devices and extract serial numbers."""
+        """GET dashboard.bw-log.com/?page=devices and extract serial numbers.
+
+        Chrome HAR: eerste document-GET is ``/?page=devices`` (zonder ``t=``), Referer
+        ``https://www.fresh-r.me/``. Tweede poging: ``?page=devices&t=`` als de server
+        zonder ``t=`` de Vaventis-shell geeft.
+        """
         s = self._get_session()
-        devices_url = f"{API_BASE}/?page=devices"
-        
-        # Add auth_token as cookie for dashboard access
-        from yarl import URL
         s.cookie_jar.update_cookies(
             {"auth_token": self._token or ""},
-            URL("https://dashboard.bw-log.com")
+            URL("https://dashboard.bw-log.com"),
         )
-        
+
+        urls: list[str] = [f"{API_BASE}/?page=devices"]
+        if self._token:
+            urls.append(
+                f"{API_BASE}/?page=devices&t={quote(self._token, safe='')}"
+            )
+
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,image/apng,*/*;q=0.8"
+            ),
             "Accept-Language": "nl,en-US;q=0.9,en;q=0.8,de;q=0.7,ms;q=0.6,id;q=0.5",
-            "Accept-Encoding": "gzip, deflate",  # Remove brotli to avoid encoding issues
+            "Accept-Encoding": "gzip, deflate",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
             "Connection": "keep-alive",
-            "Referer": "https://fresh-r.me/login/index.php?page=login",
+            "Upgrade-Insecure-Requests": "1",
+            "Referer": "https://www.fresh-r.me/",
         }
-        
-        self._log_request('GET', devices_url, headers)
-        
-        try:
-            async with s.get(devices_url, allow_redirects=True,
-                             headers=headers,
-                             timeout=aiohttp.ClientTimeout(total=15)) as r:
-                html = await r.text()
-                self._log_response(r.status, str(r.url), dict(r.headers), html, s.cookie_jar)
-                _LOGGER.debug(
-                    "Devices page GET %s → %s (final: %s)",
-                    devices_url, r.status, str(r.url),
-                )
-                if r.status != 200:
-                    _LOGGER.error("Devices page returned HTTP %s", r.status)
-                    return []
 
-                serials = _serials_in_html(html)
-                if not serials:
-                    _LOGGER.warning(
-                        "No serial numbers found on devices page. Body snippet: %.500s", html[:500]
+        last_html = ""
+        for attempt, devices_url in enumerate(urls, start=1):
+            self._log_request("GET", devices_url, headers)
+            try:
+                async with s.get(
+                    devices_url,
+                    allow_redirects=True,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as r:
+                    html = await r.text()
+                    last_html = html
+                    self._log_response(
+                        r.status, str(r.url), dict(r.headers), html, s.cookie_jar
                     )
-                    return []
+                    _LOGGER.debug(
+                        "Devices page GET [%s/%s] %s → %s (final: %s)",
+                        attempt,
+                        len(urls),
+                        devices_url,
+                        r.status,
+                        str(r.url),
+                    )
+                    if r.status != 200:
+                        _LOGGER.error("Devices page returned HTTP %s", r.status)
+                        continue
 
-                _LOGGER.info("Discovered device serial(s) from HTML: %s", serials)
-                return [{"id": s, "type": "Fresh-r", "room": ""} for s in serials]
-        except aiohttp.ClientError as e:
-            _LOGGER.error("Could not fetch devices page: %s", e)
-            return []
+                    serials = _serials_in_html(html)
+                    if serials:
+                        _LOGGER.info(
+                            "Discovered device serial(s) from HTML: %s", serials
+                        )
+                        return [
+                            {"id": s, "type": "Fresh-r", "room": ""} for s in serials
+                        ]
+
+                    low = html[:6000].lower()
+                    if "vaventis" in low and attempt < len(urls):
+                        _LOGGER.debug(
+                            "Devices HTML looks like Vaventis shell — retry with ?t= "
+                            "(attempt %s)",
+                            attempt + 1,
+                        )
+                        continue
+
+                    if "vaventis" in low:
+                        _LOGGER.error(
+                            "Fresh-r: devices-HTML is de Vaventis login/shell "
+                            "(geen dashboard). Sessie ontbreekt of is verlopen — "
+                            "Integratie → Fresh-r → opnieuw inloggen."
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "No serial numbers found on devices page. Body snippet: %.500s",
+                            html[:500],
+                        )
+                    return []
+            except aiohttp.ClientError as e:
+                _LOGGER.error("Could not fetch devices page (%s): %s", devices_url, e)
+                continue
+
+        if last_html:
+            _LOGGER.warning(
+                "No serial numbers after %s URL attempt(s). Snippet: %.500s",
+                len(urls),
+                last_html[:500],
+            )
+        return []
 
     # ── Current data ───────────────────────────────────────────────────────────
 
@@ -1755,25 +1844,29 @@ class FreshRApiClient:
         if not self._token:
             await self.async_login()
             
+        rk = _fresh_r_now_request_key(serial)
+        req = {
+            rk: {
+                "request": "fresh-r-now",
+                "serial": serial,
+                "fields": FIELDS_NOW,
+            }
+        }
         try:
-            raw = await self._call({
-                "current-data": {
-                    "request": "fresh-r-now",
-                    "serial": serial,
-                    "fields": FIELDS_NOW,
-                }
-            })
+            raw = await self._call(req)
         except FreshRConnectionError:
             _LOGGER.info("API error — re-authenticating")
             await self._refresh_token()
-            raw = await self._call({
-                "current-data": {
-                    "request": "fresh-r-now",
-                    "serial": serial,
-                    "fields": FIELDS_NOW,
-                }
-            })
-        return self._parse(raw.get("current-data", {}))
+            raw = await self._call(req)
+        # HAR: response uses same key as request; legacy integrations used ``current-data``
+        block = raw.get(rk) or raw.get("current-data") or {}
+        if not block and raw:
+            _LOGGER.debug(
+                "fresh-r-now: no data under %r or current-data; response keys: %s",
+                rk,
+                list(raw.keys()),
+            )
+        return self._parse(block)
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -1839,6 +1932,10 @@ class FreshRApiClient:
         # Derived sensors (require t1, t2, t4, flow)
         if {"t1", "t2", "t4", "flow"} <= result.keys():
             result.update(derive(result))
+
+        # Humidity tab: water vapor (g/m³) from indoor T + RH
+        if "t1" in result and "hum" in result:
+            result["water_vapor"] = water_vapor_g_m3(result["t1"], result["hum"])
 
         return result
 

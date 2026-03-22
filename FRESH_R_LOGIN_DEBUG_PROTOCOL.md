@@ -23,6 +23,22 @@ Content-Length: 0
 Cookie: sess_token=bf7975f224...
 ```
 
+**Devices-pagina (HTML discovery) vs XHR:**
+- Eerste **document**-request: `GET https://dashboard.bw-log.com/?page=devices` **zonder** `t=` in de URL; **Referer** vaak `https://www.fresh-r.me/` (cross-site navigatie).
+- Als de server nog de Vaventis-shell geeft: tweede poging `GET ...?page=devices&t=<64-char-hex>`.
+- **api.php**-XHR gebruikt wél `Referer: https://dashboard.bw-log.com/?page=devices` (zoals in Network-tab).
+
+### Canonieke browser-URL’s (ter referentie)
+
+| Stap | URL | Notities |
+|------|-----|----------|
+| Start | `https://fresh-r.me/` | Entry |
+| Loginformulier | `https://fresh-r.me/login/index.php?page=login` | Hier POST naar `/login/api/auth.php` (XHR), niet alleen pagina openen |
+| Na geslaagde login | Redirect naar `dashboard.bw-log.com` (devices / token in URL) | Je hoort **niet** op `page=login` te blijven; wel = auth-probleem |
+| Device-dashboard (deep link) | `https://dashboard.bw-log.com/?page=dashboard&device-type=fresh-r&serial=e:…` | Alleen met sessie; anders Vaventis-login |
+
+De integratie hoeft deze dashboard-URL niet na te bootsen: serienummer komt uit `syssearch` / HTML-discovery; data uit `api.php` met key `<serial>_current` + `fresh-r-now`.
+
 ---
 
 ## 📋 STAP 1: DATA VERZAMELEN

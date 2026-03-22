@@ -187,4 +187,5 @@ fi
 _deploy_smbclient "$SC" "${CLIENT_SMB_ARGS[@]}"
 
 echo "→ Klaar. Herstart Home Assistant (Instellingen → Systeem → Herstart)."
-echo "   Controleer in HA dat custom_components/fresh_r/manifest.json versie 2.2.4 heeft."
+_ver=$(grep -m1 '"version"' "${SCRIPT_DIR}/custom_components/fresh_r/manifest.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+echo "   Controleer in HA: custom_components/fresh_r/manifest.json → versie ${_ver:-?}"

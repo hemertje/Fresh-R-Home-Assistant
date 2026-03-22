@@ -53,6 +53,7 @@ SENSORS = {
     "flow":   (None,    "Flow Rate",              "m³/h",    None,             "measurement", "mdi:fan"),
     "co2":    ("co2",   "CO2",                    "ppm",     "carbon_dioxide", "measurement", "mdi:molecule-co2"),
     "hum":    ("hum",   "Humidity",               "%",       "humidity",       "measurement", "mdi:water-percent"),
+    "water_vapor": (None, "Water Vapor",         "g/m³",    None,             "measurement", "mdi:water-opacity"),
     "dp":     ("dp",    "Dew Point",              "°C",      "temperature",    "measurement", "mdi:water-thermometer"),
     # PM sensors
     "d5_25":  ("d5_25", "Supply PM2.5",           "µg/m³",   "pm25",           "measurement", "mdi:blur"),

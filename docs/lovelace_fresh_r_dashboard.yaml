@@ -1,0 +1,68 @@
+# Fresh-r — voorbeeld Lovelace (YAML mode of Dashboard → Raw config)
+#
+# Entity-ID's komen uit: Ontwikkelaarshulp → States → filter op "Fresh-r"
+# Patroon (uit code): unique_id = fresh_r_<serial>_<key>
+#   → entity_id ≈ sensor.fresh_r_<serial_zonder_:/>_<key>
+# Voorbeeld-serial uit dashboard: e:232212/180027 → middenstuk "e_232212_180027"
+#
+# Mapping key → weergave (zie custom_components/fresh_r/const.py):
+#   t1  Indoor Temperature    t2  Outdoor Temperature    flow  Flow Rate
+#   co2 CO2                   hum Humidity               water_vapor  Water Vapor
+#   dp  Dew Point             heat_recovered / vent_loss / energy_loss  (W)
+#
+# Anders serienummer? Vervang overal: e_232212_180027 → jouw slug (uit States).
+
+title: Fresh-r
+views:
+  - title: Lucht
+    path: fresh-r
+    icon: mdi:air-purifier
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.fresh_r_e_232212_180027_t1
+            name: Binnen °C
+            min: 10
+            max: 28
+          - type: gauge
+            entity: sensor.fresh_r_e_232212_180027_flow
+            name: Flow m³/h
+            min: 0
+            max: 150
+          - type: gauge
+            entity: sensor.fresh_r_e_232212_180027_co2
+            name: CO₂
+            min: 400
+            max: 1200
+            severity:
+              green: 400
+              yellow: 800
+              red: 1000
+
+      - type: entities
+        title: Vocht (zoals tab humidity)
+        entities:
+          - entity: sensor.fresh_r_e_232212_180027_hum
+          - entity: sensor.fresh_r_e_232212_180027_water_vapor
+          - entity: sensor.fresh_r_e_232212_180027_dp
+
+      - type: entities
+        title: Vermogen (W)
+        entities:
+          - entity: sensor.fresh_r_e_232212_180027_heat_recovered
+          - entity: sensor.fresh_r_e_232212_180027_vent_loss
+          - entity: sensor.fresh_r_e_232212_180027_energy_loss
+
+      - type: history-graph
+        title: Temperatuur binnen vs buiten
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_e_232212_180027_t1
+          - entity: sensor.fresh_r_e_232212_180027_t2
+
+      - type: history-graph
+        title: Flow
+        hours_to_show: 24
+        entities:
+          - entity: sensor.fresh_r_e_232212_180027_flow

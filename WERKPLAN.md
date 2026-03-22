@@ -1,10 +1,22 @@
 # Fresh-R Home Assistant Integration - Werkplan
 
-## 📋 PROJECT STATUS: ✅ GEÏMPLEMENTEERD - WACHT OP RATE LIMIT RESET
+## 📋 PROJECT STATUS (actueel)
+
+**Laatste update:** 22 maart 2026  
+**Integratieversie:** **v2.2.7** (o.a. `fresh-r-now` via `<serial>_current`, water vapor, auth-cookie sync)  
+**Login op Windows:** ✅ **Stabiel** — deze week **geen loginproblemen meer** op de Windows-laptop (HA + integratie gedrag zoals verwacht).
+
+**Canonieke browser-URL’s** (fresh-r.me → login → dashboard deep link, Vaventis zonder sessie): zie **[README.md](README.md)** sectie *Authentication → Canonical browser flow* en **[FRESH_R_LOGIN_DEBUG_PROTOCOL.md](FRESH_R_LOGIN_DEBUG_PROTOCOL.md)** *Canonieke browser-URL’s*.
+
+> Het onderstaande document bevat **historische** stappen (maart 2026: token-formaat, activatie, rate limits, HAR). Die blijven nuttig voor diagnose; de **open blokkades** daaronder zijn inmiddels opgelost of niet meer actueel.
+
+---
+
+## 📋 ARCHIEF: STATUS 18 maart 2026 (rate limit / testvenster)
 
 **Datum:** 18 maart 2026  
-**Status:** 🚀 AUTHENTICATION FIX DEPLOYED - Wacht op rate limit reset voor testing  
-**Versie:** v2.1.2 (Token activation + API validation)
+**Status (toen):** AUTHENTICATION FIX DEPLOYED — wacht op rate limit reset voor testing  
+**Versie (toen):** v2.1.2 (Token activation + API validation)
 
 ---
 
@@ -126,44 +138,21 @@ Body: q={...}
 
 ---
 
-## 🔄 HUIDIGE STATUS
+## 🔄 HUIDIGE STATUS (19 maart 2026)
 
-### **Code Deployment:**
-✅ Query string formaat correct geïmplementeerd  
-✅ Lege POST body correct  
-✅ Alle browser headers aanwezig  
-✅ DEEP_DEBUG enabled voor volledige analyse  
-✅ Token activation solution found and implemented
+### **Wat nu klopt**
+✅ Authenticatieflow en `api.php`-aanroepen in lijn met browser (query-`q=`, lege POST waar nodig, cookies).  
+✅ Device discovery: API + fallback HTML; HTML volgt HAR (eerst `GET /?page=devices`, daarna optioneel `&t=`).  
+✅ **Praktijk:** gebruik meldt **geen loginproblemen meer op Windows** — beschouw als **Definition of Done** voor de auth-pijn uit maart, tenzij er een nieuwe serverwijziging komt.
 
-### **Rate Limit Status:**
-⏳ **Actief sinds:** 18 maart 09:14  
-⏳ **Reset verwacht:** 19 maart ~09:14  
-⏳ **Oorzaak:** Herhaalde test pogingen tijdens Python cache debugging
+### **Optioneel / onderhoud**
+- Debug-log niveau terug naar `info` als alles stabiel blijft.  
+- Bij wijzigingen aan de Fresh-R-site: opnieuw korte HAR-check (zie `FRESH_R_LOGIN_DEBUG_PROTOCOL.md`).  
+- `deploy_fresh_r.bat` / SMB: gebruiken zoals in `docs/DEPLOY_HA_SMB.md`.
 
-### **HAR Analyse Status:**
-✅ **HAR file ontvangen** (17 maart 08:13)  
-❌ **HAR bevat bestaande sessie** - geen verse login  
-❌ **Geen auth.php request** - kunnen token origin niet zien  
-✅ **Browser gebruikt BEIDE formaten** - query string EN POST body
-
-### **v2.1.2 Implementation (18 maart 2026):**
-✅ **Token Activation Fix:** `allow_redirects=False` op dashboard GET request  
-✅ **Direct Token Storage:** Token opgeslagen in `self._token` na activation  
-✅ **API Validation:** `_test_token()` aangepast voor session/token parameters  
-✅ **Brand Icon:** `icon.png` (256x256) toegevoegd aan integration  
-⚠️ **Python Cache Issue:** HA laadt oude modules ondanks restart + version bump  
-✅ **Oplossing:** Fresh-R folder volledig verwijderd en opnieuw gedeployed
-
-### **Deployment Status:**
-✅ **Code gedeployed:** v2.1.2 op HA server (18 maart 09:25)  
-✅ **Python cache cleared:** Integration folder verwijderd en opnieuw aangemaakt  
-✅ **Files verified:** manifest.json (v2.1.2), api.py, icon.png aanwezig  
-⏳ **Wacht op rate limit reset:** 19 maart ~09:14
-
-### **Volgende Test:**
-📅 **Wanneer:** Na rate limit reset (19 maart ~09:14)  
-📋 **Actie:** Fresh-R integration toevoegen in HA  
-🎯 **Verwacht:** Token activation → API validation → Device discovery via API
+### **Historisch (afgerond)**
+- Rate limit venster rond 18–19 maart 2026: voorbij; bij te veel testlogins kan de server opnieuw limiteren.  
+- Oude HAR’s zonder verse login: probleem voor analyse destijds; latere captures + code fix dit.
 
 ---
 
@@ -218,49 +207,11 @@ Body: q={...}
 
 ## 🎯 VOLGENDE STAPPEN
 
-### **KRITIEK: Browser Login Flow Analyse (17 maart)**
+### **Auth / login (afgerond voorlopig)**
+De kritieke browser-loginflow-analyse en implementatie zijn **afgerond**; Windows-gebruik bevestigt **stabiele login**.  
+Alleen bij **nieuwe symptomen** (Invalid token, Vaventis-shell, geen devices): opnieuw HAR + `FRESH_R_LOGIN_DEBUG_PROTOCOL.md`.
 
-**Doel:** Vind waar `sess_token` cookie vandaan komt en waarom login API token niet werkt
-
-**Stappen:**
-1. **Browser Preparation**
-   - Logout uit Fresh-R
-   - Clear ALL cookies (fresh-r.me + dashboard.bw-log.com)
-   - F12 → Network tab → Clear
-   - Zorg dat "Preserve log" AAN staat
-
-2. **HAR Export**
-   - Login met credentials
-   - Wacht tot dashboard volledig geladen
-   - Right-click in Network tab → Save all as HAR with content
-   - Upload HAR file voor analyse
-
-3. **Analyse Vragen**
-   - Welke response ZET de `sess_token` cookie? (auth.php? redirect? JavaScript?)
-   - Is `sess_token` waarde GELIJK aan `auth_token` uit JSON?
-   - Zijn er requests TUSSEN auth.php en eerste api.php?
-   - Wordt token "geactiveerd" via een specifieke request?
-
-4. **Implementatie**
-   - Repliceer EXACTE browser flow in HA code
-   - Test met nieuwe token mechanisme
-   - Verify "Invalid token" is opgelost
-
-### **Bij Success:**
-   - Verify devices discovered
-   - Check sensors created
-   - Test data updates
-   - Disable DEEP_DEBUG
-   - Update versie naar v2.1.0
-   - Commit naar GitHub
-
-### **Bij Failure:**
-   - Herhaal HAR analyse met meer detail
-   - Check JavaScript execution (inject.js?)
-   - Mogelijk: Token wordt client-side gegenereerd
-   - Mogelijk: Multi-step authentication flow
-
-### **Middellange Termijn:**
+### **Middellange termijn**
 
 1. **Code Optimalisatie**
    - Remove auth_detector.py (niet meer nodig)
@@ -343,7 +294,8 @@ cp custom_components\fresh_r\*.py \\192.168.2.5\config\custom_components\fresh_r
 ## 📚 REFERENTIES
 
 **Documentatie:**
-- `FRESH_R_LOGIN_DEBUG_PROTOCOL.md` - Systematische debug aanpak
+- `README.md` — **Canonical browser flow** (URL-tabel fresh-r.me → login → dashboard)
+- `FRESH_R_LOGIN_DEBUG_PROTOCOL.md` — systematische debug +zelfde URL-tabel
 - `CRITICAL_FINDING.md` - Analyse van auth probleem
 - `AUTHENTICATION_METHODS_DETECTION.md` - Alle geteste methoden
 - `LOG_ANALYSIS_09_34.txt` - Exacte log analyse
@@ -393,9 +345,7 @@ Fresh-r authenticated successfully
 
 ## 🎉 CONCLUSIE
 
-**Status:** Code is klaar en correct geïmplementeerd  
-**Blokkade:** Fresh-R API rate limit (tijdelijk)  
-**Actie:** Wacht op rate limit reset, test opnieuw  
-**Verwachting:** Succesvolle authenticatie en device discovery  
+**Status:** Authenticatie en discovery zijn **in productie** gebruikt; **geen loginproblemen op Windows** in de week vóór 19 maart 2026.  
+**Blokkade (historisch):** rate limit / token-mismatch — **opgelost** in de tussenliggende releases tot **v2.2.7**.  
 
-**Volgende update:** Na succesvolle test of bij nieuwe bevindingen
+**Volgende update:** bij API-wijziging aan serverzijde, of bij regressie (dan werkplan + protocol raadplegen).

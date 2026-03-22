@@ -331,7 +331,7 @@ fresh-r.me/login
 dashboard.bw-log.com/api.php
      │
      │  HTTPS poll every 60 s
-     │  {"token": "<hex>", "requests": {"current-data": {"request": "fresh-r-now", ...}}}
+     │  {"token": "<hex>", "requests": {"e:…/…_current": {"request": "fresh-r-now", "serial": "e:…", ...}}}
      ▼
   api._parse()          — calibrate flow, derive heat/energy sensors
      │
@@ -373,20 +373,16 @@ The integration first tries the JSON API (`syssearch`), then falls back to scrap
 **Login OK but sensors stay `unavailable`**
 
 - Check logs for `AttributeError` on `async_get_current` or `NameError` for `serial` in the data poll path (fixed in v2.2.3+).
-- On HA with Python 3.14 / newer aiohttp, login error `argument of type 'URL' is not a container or iterable` → upgrade integration to **v2.2.4+** (opnieuw deployen).
 - Ensure `configuration.yaml` logger includes `custom_components.fresh_r: debug` while diagnosing.
 
 ---
 
-## Deploy naar Home Assistant (SMB)
+## Deploy naar Home Assistant (Mac + SMB)
 
-| Platform | Commando |
-|----------|----------|
-| **Windows** | `deploy_fresh_r.bat` → `\\192.168.2.5\config\custom_components\fresh_r` |
-| **macOS (share gemount)** | Finder → `smb://192.168.2.5/config`, daarna `./deploy_fresh_r.sh` |
-| **macOS (smbclient)** | `brew install samba` → `./deploy_fresh_r.sh` — wachtwoord wordt uit de **macOS-sleutelhanger** gehaald als je eerder via Finder op `smb://192.168.2.5` bent ingelogd (eerste keer vraagt macOS om toestemming). Anders: `export SMB_PASSWORD='…'` of `~/.config/hass-smb-credentials`. Uitzetten: `SMB_SKIP_KEYCHAIN=1`. |
+**Plan, Definition of Done en escalatie:** [docs/DEPLOY_HA_SMB.md](docs/DEPLOY_HA_SMB.md)
 
-Daarna **Home Assistant herstarten**.
+Lokaal (geen netwerk): `./scripts/verify_fresh_r_deploy_ready.sh`  
+Deploy: `./scripts/smb_deploy_to_ha.sh --src ./custom_components/fresh_r --dst custom_components/fresh_r` (standaard: **tar**; `icons/` wordt overgeslagen — niet nodig voor HA; zie `docs/DEPLOY_HA_SMB.md`)
 
 ---
 
