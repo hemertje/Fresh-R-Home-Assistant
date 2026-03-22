@@ -28,7 +28,7 @@ import logging
 import math
 import re
 from datetime import datetime, timezone, timedelta
-from urllib.parse import parse_qs, quote, urljoin, urlparse
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 
 import aiohttp
 from aiohttp import ClientConnectorError, ClientSSLError, ServerTimeoutError
@@ -92,8 +92,10 @@ _USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
-# Serial pattern: e.g. "e:XXXXXX/XXXXXX" or just digits
+# Serial pattern: e.g. serial=e:XXXXXX/XXXXXX or URL-encoded serial=e%3A...
 _SERIAL_RE = re.compile(r'serial=([^&"\'>\s]+)', re.I)
+# Fallback: any e:digits/digits in page (dashboard links, JSON, data-attrs)
+_E_PAIR_RE = re.compile(r'\be:(\d+)/(\d+)\b')
 # Device serial validation patterns
 _SERIAL_PATTERN_1 = re.compile(r'^e:\d+/\d+$')  # e:XXXXXX/XXXXXX
 _SERIAL_PATTERN_2 = re.compile(r'^\d+$')  # All digits
@@ -420,10 +422,21 @@ def _origin(url: str) -> str:
 
 def _serials_in_html(html: str) -> list[str]:
     """Extract device serial numbers from dashboard.bw-log.com devices page."""
-    # Pattern confirmed from HTML analysis: serial="e:XXXXXX/XXXXXX" (PRIVACY PROTECTED)
-    return list(dict.fromkeys(
-        m.group(1) for m in _SERIAL_RE.finditer(html)
-    ))
+    seen: dict[str, None] = {}
+    for m in _SERIAL_RE.finditer(html):
+        raw = m.group(1).strip().strip('"').strip("'")
+        try:
+            raw = unquote(raw)
+        except Exception:
+            pass
+        if _validate_device_serial(raw):
+            seen[raw] = None
+    # Some pages encode serial in query as e%3A… or only embed e:NNN/NNN in href/JSON
+    for m in _E_PAIR_RE.finditer(html):
+        s = f"e:{m.group(1)}/{m.group(2)}"
+        if _validate_device_serial(s):
+            seen[s] = None
+    return list(seen.keys())
 
 
 # ── Client ─────────────────────────────────────────────────────────────────────
