@@ -1,11 +1,12 @@
 """Fresh-r API client — read-only, current data only.
 
-Authentication flow (observed via browser):
-  - Login: POST credentials to fresh-r.me → HTTP 302 → dashboard.bw-log.com/?page=devices
-    PHPSESSID cookie is set on dashboard.bw-log.com during this redirect chain.
-  - There is NO separate hex token — auth is purely cookie-based (PHPSESSID).
-  - The persistent session (cookie jar) MUST be reused for all subsequent API calls
-    so the PHPSESSID is sent automatically on the same domain.
+Authentication flow (observed via browser / HAR):
+  - Login: POST credentials to fresh-r.me → redirect to dashboard.bw-log.com/?page=devices
+    (sometimes with ``?t=<activation nonce>`` in the URL).
+  - The ``t=`` query value is **not** the same as the 64-hex ``token`` in ``api.php`` JSON;
+    after a GET with ``t=``, the server sets ``sess_token`` / ``auth_token`` cookies.
+  - ``api.php`` uses that cookie-derived hex token in JSON ``token``; reuse the cookie jar
+    for all dashboard requests.
   - Serial: extracted from the devices page href (e.g. ?serial=e:XXXXXX/XXXXXX)
 
 API (dashboard_data.js):
@@ -314,16 +315,38 @@ def _sync_dashboard_auth_cookie(
 
 
 def _token_in_jar(jar: aiohttp.CookieJar) -> str | None:
-    """Return the first cookie value that looks like a hex session token."""
-    # First: check well-known names
-    for c in jar:
-        if c.key.lower().replace("-", "_") in ("sess_token", "token", "session_token", "l", "sid"):
+    """Return a hex token from the jar for ``api.php`` JSON ``token``.
+
+    **Order matters:** ``sess_token`` (set after redirect naar ``/?page=devices``) is what
+    the dashboard XHR uses; ``auth_token`` from the login JSON is often *not* accepted by
+    ``api.php`` (``Invalid token``). Prefer ``sess_token`` first, then other known names.
+    """
+    preferred = (
+        "sess_token",
+        "auth_token",
+        "token",
+        "session_token",
+        "l",
+        "sid",
+    )
+    for name in preferred:
+        for c in jar:
+            if c.key.lower().replace("-", "_") != name:
+                continue
             if _TOKEN_RE.match(c.value):
                 return c.value
-    # Fallback: any cookie whose value is pure lowercase hex 32+ chars
+    # Fallback: any hex-looking cookie on the jar (last resort)
     for c in jar:
         if _TOKEN_RE.match(c.value):
             _LOGGER.debug("Using token from cookie '%s'", c.key)
+            return c.value
+    return None
+
+
+def _sess_token_value(jar: aiohttp.CookieJar) -> str | None:
+    """Alleen de ``sess_token`` cookie (die ``api.php`` verwacht), niet ``auth_token``."""
+    for c in jar:
+        if c.key.lower().replace("-", "_") == "sess_token" and _TOKEN_RE.match(c.value):
             return c.value
     return None
 
@@ -545,13 +568,12 @@ class FreshRApiClient:
             # unsafe=True allows cookies to be shared across domains
             # quote_cookie=False prevents cookie value encoding issues
             jar = aiohttp.CookieJar(unsafe=True, quote_cookie=False)
+            # Default connector: verified TLS for https:// (unsafe cookie jar still allows
+            # cross-subdomain cookies for fresh-r.me / dashboard.bw-log.com).
             self._session = aiohttp.ClientSession(
                 cookie_jar=jar,
                 headers={"User-Agent": _USER_AGENT, "Accept-Language": "nl,en;q=0.9"},
-                # Treat both domains as secure origins for cookie sharing
-                connector=aiohttp.TCPConnector(
-                    ssl=False,  # Allow HTTP for local testing
-                ),
+                connector=aiohttp.TCPConnector(),
             )
         return self._session
 
@@ -741,13 +763,40 @@ class FreshRApiClient:
                 if DEEP_DEBUG:
                     _LOGGER.error("🔍 API TEST RESPONSE - Status: %s, Body: %.500s", r.status, body[:500])
                 
-                # Check if authenticated
+                # Check if authenticated (Fresh-r API shapes vary slightly)
                 if "user_info" in data:
                     user_info = data["user_info"]
-                    if isinstance(user_info, dict) and user_info.get("success") == True:
-                        _LOGGER.debug("✓ Token test successful")
-                        return True
+                    if isinstance(user_info, dict):
+                        if user_info.get("success") is True:
+                            _LOGGER.debug("✓ Token test successful (success=true)")
+                            return True
+                        if user_info.get("success") is False:
+                            reason = user_info.get("reason") or user_info.get("error") or "unknown"
+                            _LOGGER.warning(
+                                "Token test: API weigerde token — %s",
+                                reason,
+                            )
+                            return False
+                        if user_info.get("error"):
+                            _LOGGER.warning(
+                                "Token test: user_info error: %s — body: %.300s",
+                                user_info.get("error"),
+                                body[:300],
+                            )
+                            return False
+                        # Some responses expose profile fields without explicit success flag
+                        if any(
+                            k in user_info
+                            for k in ("first_name", "last_name", "locale", "type")
+                        ):
+                            _LOGGER.debug("✓ Token test successful (profile fields present)")
+                            return True
                 
+                _LOGGER.warning(
+                    "Token test failed: unexpected api.php shape — keys=%s body=%.400s",
+                    list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+                    body[:400],
+                )
                 return False
                 
         except Exception as err:
@@ -802,7 +851,16 @@ class FreshRApiClient:
                 # Token is now set and activated - test it with an API call
                 if self._token:
                     _LOGGER.info("Testing activated token with API call...")
-                    await self._test_token(s, self._token)
+                    if not await self._test_token(s, self._token):
+                        _LOGGER.error(
+                            "Fresh-r: login cookies/token zijn gezet, maar dashboard api.php "
+                            "weigert de sessie. Controleer wachtwoord, of probeer later opnieuw "
+                            "(Mogelijk andere response-vorm dan verwacht — zie DEBUG-log voor body)."
+                        )
+                        raise FreshRAuthError(
+                            "Login gelukt niet volledig: API validatie mislukt na inloggen. "
+                            "Controleer je gegevens of herstart en probeer opnieuw."
+                        )
                     _LOGGER.info("Token validated successfully via API")
                     await self._save_session()
                     return
@@ -891,6 +949,46 @@ class FreshRApiClient:
         # Should never reach here, but just in case
         raise FreshRAuthError(f"Login failed: {last_error}")
 
+    async def _discover_hex_token_from_dashboard(self, s: aiohttp.ClientSession) -> str | None:
+        """GET ``/?page=devices`` so cookies / inline JS expose the hex API token (sess_token).
+
+        Browsers often receive ``PHPSESSID`` on the first dashboard hit; the ``token`` field
+        in ``api.php?q=...`` must match the hex session id the backend expects — that may only
+        appear after loading the devices shell (same as HAR flow).
+        """
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,image/apng,*/*;q=0.8"
+            ),
+            "Referer": "https://www.fresh-r.me/",
+        }
+        devices_url = f"{API_BASE}/?page=devices"
+        try:
+            async with s.get(
+                devices_url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+                allow_redirects=True,
+            ) as dr:
+                html = await dr.text()
+                tok = _token_in_url(_safe_str_for_in(dr.url))
+                if tok and _TOKEN_RE.match(tok):
+                    return tok
+                tok = _token_in_html(html)
+                if tok and _TOKEN_RE.match(tok):
+                    return tok
+                tok = _token_in_jar(s.cookie_jar)
+                if tok and _TOKEN_RE.match(tok):
+                    return tok
+        except aiohttp.ClientError as err:
+            _LOGGER.debug("Dashboard GET for hex token failed: %s", err)
+        return None
+
     async def _login_and_follow_redirect(self, s: aiohttp.ClientSession) -> None:
         """Login and follow redirect to devices page.
         
@@ -958,18 +1056,55 @@ class FreshRApiClient:
                     _LOGGER.info("✅ Login successful - redirected to dashboard")
                     _LOGGER.info("Final URL: %s", r.url)
 
-                    # HAR/browser: token in query ?t=... (same hex as auth_token path)
+                    # HAR (2026): ?t= in the redirect URL is an *activation* nonce — it is NOT
+                    # the same value as ``token`` inside api.php JSON. Browser: GET
+                    # /?page=devices&t=… → 302 → /?page=devices; server sets sess_token cookie;
+                    # XHR uses sess_token (64 hex chars), not t=.
                     parsed_final = urlparse(_safe_str_for_in(r.url))
                     url_token = (parse_qs(parsed_final.query).get("t") or [None])[0]
                     if url_token:
-                        self._token = url_token
-                        self._token_time = datetime.now(timezone.utc)
-                        _sync_dashboard_auth_cookie(s.cookie_jar, url_token)
-                        _LOGGER.info(
-                            "🔑 Token from dashboard URL (t=): %.8s…",
-                            url_token,
+                        act_url = f"{API_BASE}/?page=devices&t={quote(url_token, safe='')}"
+                        act_headers = {
+                            "User-Agent": (
+                                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+                            ),
+                            "Accept": (
+                                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                                "image/avif,image/webp,image/apng,*/*;q=0.8"
+                            ),
+                            "Referer": "https://www.fresh-r.me/",
+                        }
+                        try:
+                            async with s.get(
+                                act_url,
+                                headers=act_headers,
+                                timeout=aiohttp.ClientTimeout(total=15),
+                                allow_redirects=True,
+                            ) as ar:
+                                await ar.text()
+                                _LOGGER.debug(
+                                    "Dashboard t= activation GET → HTTP %s final=%s",
+                                    ar.status,
+                                    ar.url,
+                                )
+                        except aiohttp.ClientError as err:
+                            _LOGGER.warning("Dashboard activation GET failed: %s", err)
+
+                        api_tok = _token_in_jar(s.cookie_jar)
+                        if api_tok:
+                            self._token = api_tok
+                            self._token_time = datetime.now(timezone.utc)
+                            _sync_dashboard_auth_cookie(s.cookie_jar, api_tok)
+                            _LOGGER.info(
+                                "🔑 API token from cookies after t= activation: %.8s… "
+                                "(t= ≠ api token — matches browser/HAR)",
+                                api_tok,
+                            )
+                            return
+                        _LOGGER.warning(
+                            "t= in URL but no hex sess_token in jar after activation — falling back"
                         )
-                        return
 
                     # sess_token cookie (Hex) if present
                     sess_from_jar = None
@@ -988,17 +1123,41 @@ class FreshRApiClient:
                         )
                         return
 
-                    # Fallback: PHPSESSID session id for api.php `token` + cookie jar
+                    # Load devices shell (browser does this); often sets / reveals hex sess_token
+                    discovered = await self._discover_hex_token_from_dashboard(s)
+                    if discovered:
+                        self._token = discovered
+                        self._token_time = datetime.now(timezone.utc)
+                        _sync_dashboard_auth_cookie(s.cookie_jar, discovered)
+                        _LOGGER.info(
+                            "🔑 Token from dashboard devices GET: %.8s…", discovered
+                        )
+                        return
+
+                    # Any hex token in jar after redirect (auth_token, l, …)
+                    jar_any = _token_in_jar(s.cookie_jar)
+                    if jar_any:
+                        self._token = jar_any
+                        self._token_time = datetime.now(timezone.utc)
+                        _sync_dashboard_auth_cookie(s.cookie_jar, jar_any)
+                        _LOGGER.info(
+                            "🔑 Using hex token from cookie jar: %.8s…", jar_any
+                        )
+                        return
+
+                    # Last resort: PHPSESSID — api.php often rejects this as JSON ``token``
                     php_sessid = None
                     for cookie in s.cookie_jar:
-                        if cookie.key == "PHPSESSID" and "dashboard.bw-log.com" in _safe_str_for_in(
+                        if cookie.key.upper() == "PHPSESSID" and "dashboard.bw-log.com" in _safe_str_for_in(
                             cookie["domain"]
                         ):
                             php_sessid = cookie.value
                             break
-                    
                     if php_sessid:
-                        _LOGGER.info("🔑 PHPSESSID cookie found: %s...", php_sessid[:8])
+                        _LOGGER.warning(
+                            "Alleen PHPSESSID gevonden (geen hex sess_token). "
+                            "api.php kan 'Invalid token' geven — probeer opnieuw of controleer Fresh-r."
+                        )
                         self._token = php_sessid
                         self._token_time = datetime.now(timezone.utc)
                         _sync_dashboard_auth_cookie(s.cookie_jar, php_sessid)
@@ -1029,45 +1188,100 @@ class FreshRApiClient:
                             # HAR analysis shows: GET /?page=devices&t={token}
                             # This activates the token server-side before API calls work
                             if auth_token:
-                                _LOGGER.info("🔑 Activating token via dashboard GET (HAR-verified flow)...")
-                                
-                                # Step 1: GET dashboard with token in URL (exactly as browser does)
-                                # Don't follow redirects - just make the request to activate token
-                                dashboard_url = f"https://dashboard.bw-log.com/?page=devices&t={auth_token}"
+                                _LOGGER.info("🔑 Activating session via dashboard GET (HAR: volg redirects → sess_token cookie)...")
+                                dashboard_url = f"{API_BASE}/?page=devices&t={quote(auth_token, safe='')}"
                                 dashboard_headers = {
-                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                                    "Referer": "https://fresh-r.me/",  # Coming from login page
+                                    "User-Agent": (
+                                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+                                    ),
+                                    "Accept": (
+                                        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                                        "image/avif,image/webp,image/apng,*/*;q=0.8"
+                                    ),
+                                    "Referer": "https://www.fresh-r.me/",
                                 }
-                                
                                 try:
-                                    async with s.get(dashboard_url, headers=dashboard_headers, timeout=15, allow_redirects=False) as dash_r:
-                                        _LOGGER.info("✅ Dashboard GET status: %s (token activation)", dash_r.status)
-                                        
-                                        # Server should return 302 redirect after activating token
-                                        if dash_r.status == 302:
-                                            _LOGGER.info("🎯 Token activated successfully (302 redirect) - ready for API calls")
-                                        elif dash_r.status == 200:
-                                            _LOGGER.info("🎯 Token activated successfully (200 OK) - ready for API calls")
-                                        else:
-                                            raise FreshRAuthError(
-                                                f"Token activation failed (unexpected dashboard HTTP {dash_r.status})"
-                                            )
-                                        
+                                    # MUST follow redirects: 302 → /?page=devices zet vaak **sess_token**;
+                                    # zonder follow blijft alleen JSON auth_token over — api.php geeft dan
+                                    # ``Invalid token`` (HAR: token in api.php ≠ auth_token uit login-JSON).
+                                    async with s.get(
+                                        dashboard_url,
+                                        headers=dashboard_headers,
+                                        timeout=aiohttp.ClientTimeout(total=20),
+                                        allow_redirects=True,
+                                    ) as dash_r:
+                                        await dash_r.text()
+                                        _LOGGER.info(
+                                            "✅ Dashboard activation GET afgerond: HTTP %s final=%s",
+                                            dash_r.status,
+                                            dash_r.url,
+                                        )
                                         if DEEP_DEBUG:
-                                            _LOGGER.error("="*80)
-                                            _LOGGER.error("🔍 DASHBOARD ACTIVATION RESPONSE")
-                                            _LOGGER.error(f"Status: {dash_r.status}")
-                                            _LOGGER.error(f"URL: {dash_r.url}")
-                                            _LOGGER.error(f"Headers: {dict(dash_r.headers)}")
-                                            _LOGGER.error("="*80)
-                                            
-                                        # Store token directly - don't rely on cookies
-                                        self._token = auth_token
+                                            _LOGGER.error("🔍 DASHBOARD ACTIVATION final URL: %s", dash_r.url)
+
+                                    # api.php verwacht ``sess_token``, niet de ``auth_token`` uit login-JSON.
+                                    if not _sess_token_value(s.cookie_jar):
+                                        _LOGGER.info(
+                                            "Nog geen sess_token — extra GET %s/?page=devices (devices-shell, zoals browser)",
+                                            API_BASE,
+                                        )
+                                        async with s.get(
+                                            f"{API_BASE}/?page=devices",
+                                            headers=dashboard_headers,
+                                            timeout=aiohttp.ClientTimeout(total=20),
+                                            allow_redirects=True,
+                                        ) as shell_r:
+                                            await shell_r.text()
+                                            _LOGGER.debug(
+                                                "Devices shell GET: HTTP %s final=%s",
+                                                shell_r.status,
+                                                shell_r.url,
+                                            )
+
+                                    api_tok = _sess_token_value(s.cookie_jar)
+                                    if api_tok:
+                                        self._token = api_tok
                                         self._token_time = datetime.now(timezone.utc)
-                                        _sync_dashboard_auth_cookie(s.cookie_jar, auth_token)
-                                        _LOGGER.info("Fresh-r authenticated successfully (token=%.8s…)", auth_token)
-                                        
+                                        _sync_dashboard_auth_cookie(s.cookie_jar, api_tok)
+                                        _LOGGER.info(
+                                            "Fresh-r authenticated (sess_token voor api.php): %.8s…",
+                                            api_tok,
+                                        )
+                                    else:
+                                        discovered = await self._discover_hex_token_from_dashboard(s)
+                                        if discovered:
+                                            self._token = discovered
+                                            self._token_time = datetime.now(timezone.utc)
+                                            _sync_dashboard_auth_cookie(s.cookie_jar, discovered)
+                                            _LOGGER.info(
+                                                "Fresh-r authenticated (token uit dashboard-HTML): %.8s…",
+                                                discovered,
+                                            )
+                                        else:
+                                            # Laatste reden: sommige setups zetten alleen auth_token; kan alsnog falen.
+                                            jar_hex = _token_in_jar(s.cookie_jar)
+                                            if jar_hex:
+                                                self._token = jar_hex
+                                                self._token_time = datetime.now(timezone.utc)
+                                                _sync_dashboard_auth_cookie(s.cookie_jar, jar_hex)
+                                                _LOGGER.warning(
+                                                    "Geen sess_token — gebruik hex-token uit jar (%s): %.8s… "
+                                                    "(api.php kan alsnog 'Invalid token' geven)",
+                                                    "auth_token?"
+                                                    if jar_hex == auth_token
+                                                    else "andere cookie",
+                                                    jar_hex,
+                                                )
+                                            else:
+                                                _LOGGER.warning(
+                                                    "Geen sess_token — fallback naar JSON auth_token "
+                                                    "(api.php kan 'Invalid token' geven)"
+                                                )
+                                                self._token = auth_token
+                                                self._token_time = datetime.now(timezone.utc)
+                                                _sync_dashboard_auth_cookie(s.cookie_jar, auth_token)
+
                                 except Exception as e:
                                     _LOGGER.error("❌ Dashboard GET failed - token may not be activated: %s", e)
                                     raise FreshRAuthError(f"Token activation failed: {e}") from e
