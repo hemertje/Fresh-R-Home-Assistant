@@ -1,3 +1,6 @@
+# Lokale Zendure-proxy fork hoort in eigen repo (~/Development/Zendure-zenSDK-proxy), niet in deze tree
+Zendure-zenSDK-proxy/
+
 .cursor/
 __pycache__/
 *.pyc

@@ -12,6 +12,8 @@ A Home Assistant custom integration that **reads** data from the [Fresh-r.me](ht
 >
 > **No historical data** — The Fresh-r.me database cannot be queried. Home Assistant's own recorder builds history going forward from the moment the integration is active.
 
+**Related (separate repo):** Notes on the [Zendure zenSDK Node-RED proxy](https://github.com/gast777/Zendure-zenSDK-proxy) (Gielz + Home Assistant) and a **1×3 async fork** for review live in [docs/Zendure-zenSDK-proxy-samenvatting.md](docs/Zendure-zenSDK-proxy-samenvatting.md); source code is in [hemertje/Zendure-zenSDK-proxy](https://github.com/hemertje/Zendure-zenSDK-proxy), not bundled here.
+
 ---
 
 ## 🎯 **v2.0.5 - MAJOR BREAKTHROUGH**
