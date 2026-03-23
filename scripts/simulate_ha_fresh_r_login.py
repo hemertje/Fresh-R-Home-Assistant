@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# fresh_r_simulator v2 — laadt api.py via importlib (geen homeassistant nodig).
+# Check: regel ~149 moet `api_mod = _load_fresh_r_api_only()` zijn, NIET `from custom_components.fresh_r.api import`.
 """Simuleer Home Assistant: zelfde login als de integratie (FreshRApiClient.async_login).
 
 Gebruik (vanaf de repo-root):
@@ -21,10 +23,39 @@ import os
 import sys
 from pathlib import Path
 
-# Repo-root op PYTHONPATH (naast: PYTHONPATH=. python3 ...)
+# Repo-root (voor pad naar api.py / const.py)
 _ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+
+
+def _load_fresh_r_api_only():
+    """Laad alleen ``api.py`` (+ ``const.py``). Sla ``fresh_r/__init__.py`` over — die importeert Home Assistant.
+
+    Zonder deze truc: ``from custom_components.fresh_r.api import …`` triggert eerst ``__init__.py``.
+    """
+    import importlib.util
+    import types
+
+    fr = _ROOT / "custom_components" / "fresh_r"
+    for name, p in (
+        ("custom_components", _ROOT / "custom_components"),
+        ("custom_components.fresh_r", fr),
+    ):
+        if name not in sys.modules:
+            m = types.ModuleType(name)
+            m.__path__ = [str(p)]
+            sys.modules[name] = m
+
+    def _exec(name: str, path: Path):
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Kan {name} niet laden vanuit {path}")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+    _exec("custom_components.fresh_r.const", fr / "const.py")
+    return _exec("custom_components.fresh_r.api", fr / "api.py")
 
 
 def _ha_like_logging() -> None:
@@ -107,12 +138,6 @@ async def _run() -> int:
     _ha_like_logging()
     log = logging.getLogger("simulate_ha")
 
-    if os.environ.get("FRESH_R_DEEP_DEBUG", "").strip() in ("1", "true", "yes"):
-        import custom_components.fresh_r.api as api_mod
-
-        api_mod.DEEP_DEBUG = True
-        log.info("FRESH_R_DEEP_DEBUG=1 → api.py DEEP_DEBUG actief (veel HTTP-details).")
-
     try:
         import aiohttp
     except ImportError:
@@ -122,7 +147,20 @@ async def _run() -> int:
         )
         return 2
 
-    from custom_components.fresh_r.api import FreshRApiClient, FreshRAuthError, FreshRConnectionError
+    try:
+        api_mod = _load_fresh_r_api_only()
+    except Exception as err:  # noqa: BLE001
+        print(f"Kan fresh_r/api.py niet laden: {err}", file=sys.stderr)
+        return 2
+
+    if os.environ.get("FRESH_R_DEEP_DEBUG", "").strip() in ("1", "true", "yes"):
+        api_mod.DEEP_DEBUG = True
+        log.info("FRESH_R_DEEP_DEBUG=1 → api.py DEEP_DEBUG actief (veel HTTP-details).")
+
+    FreshRApiClient = api_mod.FreshRApiClient
+    FreshRAuthError = api_mod.FreshRAuthError
+    FreshRConnectionError = api_mod.FreshRConnectionError
+    FreshRRateLimitError = api_mod.FreshRRateLimitError
 
     log.info("── Start: zelfde codepad als Home Assistant (async_login(force=True))")
     log.info("── E-mail: %s", email)
@@ -145,6 +183,9 @@ async def _run() -> int:
         except FreshRConnectionError as err:
             log.error("── FreshRConnectionError: %s", err)
             return 1
+        except FreshRRateLimitError as err:
+            log.error("── Rate limit: %s — wacht enige tijd en probeer opnieuw.", err)
+            return 3
         finally:
             await client.async_close()
             log.info("── Sessie gesloten.")
