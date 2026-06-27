@@ -184,7 +184,12 @@ async def _run() -> int:
             log.error("── FreshRConnectionError: %s", err)
             return 1
         except FreshRRateLimitError as err:
-            log.error("── Rate limit: %s — wacht enige tijd en probeer opnieuw.", err)
+            log.error(
+                "── Rate limit: %s\n"
+                "   Fresh-r blokkeert tijdelijk login (te veel pogingen). Wacht meestal 15–60 minuten; "
+                "draai dit script niet herhaaldelijk of HA niet in een loop herstarten.",
+                err,
+            )
             return 3
         finally:
             await client.async_close()

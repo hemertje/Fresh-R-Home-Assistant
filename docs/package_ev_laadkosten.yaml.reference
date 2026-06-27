@@ -1,0 +1,844 @@
+# EV thuisladen — werkgever €0,30/kWh + geschatte kosten (dynamisch + PV-aandeel)
+# Start 2025-05-28: Zaptec-meter; geladen = meterwaarde (kWh op lader)
+# Historisch (vóór dashboard): netto kWh × gem. laadprijs (zondag/nacht-vensters).
+# Sinds dashboard: Tibber per moment (integrator) + opgebouwd dagelijks.
+
+input_datetime:
+  ev_thuisladen_start:
+    name: EV thuisladen start werkgever
+    has_date: true
+    has_time: false
+    initial: "2025-05-28"
+
+  ev_kosten_live_start:
+    name: EV kosten live start (dashboard)
+    has_date: true
+    has_time: true
+    initial: "2026-05-28 00:00:00"
+
+input_number:
+  ev_meter_kwh_bij_live_start:
+    name: EV meter kWh bij dashboard start
+    min: 0
+    max: 20000
+    step: 0.001
+    mode: box
+    unit_of_measurement: kWh
+    icon: mdi:ev-station
+    initial: 4781.544
+
+  ev_kosten_live_opgebouwd_eur:
+    name: EV kosten live opgebouwd intern
+    min: 0
+    max: 50000
+    step: 0.01
+    mode: box
+    unit_of_measurement: EUR
+    icon: mdi:cash
+    initial: 0
+
+  ev_zon_kwh_bij_live_start:
+    name: EV zon kWh bij dashboard start
+    min: 0
+    max: 20000
+    step: 0.001
+    mode: box
+    unit_of_measurement: kWh
+    icon: mdi:solar-power
+    initial: 0
+
+  ev_teruglever_prijs_kwh:
+    name: EV teruglever prijs override
+    min: 0
+    max: 2
+    step: 0.0001
+    mode: box
+    unit_of_measurement: EUR/kWh
+    icon: mdi:transmission-tower-export
+    initial: 0
+
+  ev_gemiste_teruglever_opgebouwd_eur:
+    name: EV gemiste teruglever opgebouwd intern
+    min: 0
+    max: 50000
+    step: 0.01
+    mode: box
+    unit_of_measurement: EUR
+    icon: mdi:solar-power
+    initial: 0
+
+  ev_meter_baseline_kwh:
+    name: EV meter Zaptec op startdatum (alleen handmatige offset)
+    min: 0
+    max: 20000
+    step: 0.001
+    mode: box
+    unit_of_measurement: kWh
+    icon: mdi:ev-station
+    initial: 0
+
+  ev_vergoeding_per_kwh:
+    name: EV vergoeding per kWh
+    min: 0
+    max: 1
+    step: 0.01
+    mode: box
+    unit_of_measurement: EUR/kWh
+    icon: mdi:cash
+    initial: 0.3
+
+  ev_kwh_zon_telling_voor_start:
+    name: EV kWh zon handmatig (alleen bij import)
+    min: 0
+    max: 20000
+    step: 0.1
+    mode: box
+    unit_of_measurement: kWh
+    icon: mdi:solar-power
+    initial: 0
+
+  ev_laad_zondag_uur_start:
+    name: EV laad zondag uur start
+    min: 0
+    max: 23
+    step: 1
+    mode: box
+    icon: mdi:calendar
+    initial: 11
+
+  ev_laad_zondag_uur_eind:
+    name: EV laad zondag uur eind
+    min: 1
+    max: 24
+    step: 1
+    mode: box
+    icon: mdi:calendar
+    initial: 19
+
+  ev_laad_nacht_uur_start:
+    name: EV laad nacht uur start
+    min: 0
+    max: 23
+    step: 1
+    mode: box
+    icon: mdi:weather-night
+    initial: 0
+
+  ev_laad_nacht_uur_eind:
+    name: EV laad nacht uur eind
+    min: 1
+    max: 24
+    step: 1
+    mode: box
+    icon: mdi:weather-night
+    initial: 7
+
+  ev_laad_gewicht_zondag:
+    name: EV laad gewicht zondagmiddag
+    min: 50
+    max: 100
+    step: 5
+    mode: slider
+    unit_of_measurement: "%"
+    icon: mdi:percent
+    initial: 75
+
+  ev_laadprijs_zondag_seed:
+    name: EV laadprijs zondag seed
+    min: 0
+    max: 2
+    step: 0.0001
+    mode: box
+    unit_of_measurement: EUR/kWh
+    icon: mdi:seed
+    initial: 0.234
+
+  ev_laadprijs_nacht_seed:
+    name: EV laadprijs nacht seed
+    min: 0
+    max: 2
+    step: 0.0001
+    mode: box
+    unit_of_measurement: EUR/kWh
+    icon: mdi:seed
+    initial: 0.271
+
+  ev_laad_zondag_monsters:
+    name: EV laad zondag monsters intern
+    min: 0
+    max: 100000
+    step: 1
+    mode: box
+    icon: mdi:counter
+    initial: 0
+
+  ev_laad_nacht_monsters:
+    name: EV laad nacht monsters intern
+    min: 0
+    max: 100000
+    step: 1
+    mode: box
+    icon: mdi:counter
+    initial: 0
+
+  ev_kosten_integrator_offset_eur:
+    name: EV kosten offset intern
+    min: 0
+    max: 50000
+    step: 0.00001
+    mode: box
+    unit_of_measurement: EUR
+    icon: mdi:counter
+    initial: 0
+
+  ev_gemiste_teruglever_offset_eur:
+    name: EV gemiste teruglever offset intern
+    min: 0
+    max: 50000
+    step: 0.00001
+    mode: box
+    unit_of_measurement: EUR
+    icon: mdi:counter
+    initial: 0
+
+template:
+  - sensor:
+      - name: EV geladen thuis sinds start
+        unique_id: ev_geladen_thuis_kwh_v2
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        icon: mdi:ev-station
+        state: >-
+          {{ states('sensor.thuislader_jeroen_meterwaarde') | float(0) | round(2) }}
+
+      - name: EV werkgever vergoeding
+        unique_id: ev_werkgever_vergoeding_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:cash-refund
+        state: >-
+          {% set kwh = states('sensor.ev_geladen_thuis_sinds_start') | float(0) %}
+          {% set rate = states('input_number.ev_vergoeding_per_kwh') | float(0.3) %}
+          {{ (kwh * rate) | round(2) }}
+
+      - name: EV prijs net kWh
+        unique_id: ev_prijs_net_kwh_v2
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:currency-eur
+        state: >-
+          {% set tibber = states('sensor.hemertje_elektriciteitsprijs') | float(0) %}
+          {% if tibber > 0 %}
+            {{ tibber | round(5) }}
+          {% else %}
+            {{ states('sensor.nordpool_kwh_nl_eur_5_09_0') | float(0) | round(5) }}
+          {% endif %}
+
+      - name: EV PV-aandeel tijdens laden
+        unique_id: ev_pv_aandeel_tijdens_laden
+        unit_of_measurement: "%"
+        icon: mdi:solar-power
+        state: >-
+          {% set load = states('sensor.thuislader_jeroen_laadvermogen') | float(0) %}
+          {% set pv = states('sensor.solaredge_huidig_vermogen') | float(0) %}
+          {% if load > 100 %}
+            {{ (([load, pv] | min) / load * 100) | round(0) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: EV netto prijs per kWh
+        unique_id: ev_netto_prijs_kwh_v2
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:lightning-bolt
+        state: >-
+          {% set prijs = states('sensor.ev_prijs_net_kwh') | float(0) %}
+          {% set load = states('sensor.thuislader_jeroen_laadvermogen') | float(0) %}
+          {% set pv = states('sensor.solaredge_huidig_vermogen') | float(0) %}
+          {% if load > 100 %}
+            {{ (prijs * ([load - pv, 0] | max) / load) | round(5) }}
+          {% else %}
+            {{ prijs | round(5) }}
+          {% endif %}
+
+      - name: EV vermogen net kW
+        unique_id: ev_vermogen_net_kw
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+        icon: mdi:transmission-tower
+        state: >-
+          {% set load_kw = states('sensor.thuislader_jeroen_laadvermogen') | float(0) / 1000 %}
+          {% set pv_kw = states('sensor.solaredge_huidig_vermogen') | float(0) / 1000 %}
+          {% if load_kw > 0.1 %}
+            {{ ([load_kw - pv_kw, 0] | max) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: EV vermogen zon kW
+        unique_id: ev_vermogen_zon_kw
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >-
+          {% set load_kw = states('sensor.thuislader_jeroen_laadvermogen') | float(0) / 1000 %}
+          {% set pv_kw = states('sensor.solaredge_huidig_vermogen') | float(0) / 1000 %}
+          {% if load_kw > 0.1 %}
+            {{ ([load_kw, pv_kw] | min) | round(3) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: EV kWh van zon sinds start
+        unique_id: ev_kwh_van_zon_sinds_start
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >-
+          {% set tot = states('sensor.ev_geladen_thuis_sinds_start') | float(0) %}
+          {% set zon = states('sensor.ev_opgeteld_zon_kwh') | float(0)
+             + states('input_number.ev_kwh_zon_telling_voor_start') | float(0) %}
+          {{ [zon, tot] | min | round(2) }}
+
+      - name: EV kWh van net sinds start
+        unique_id: ev_kwh_van_net_sinds_start
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+        icon: mdi:transmission-tower
+        state: >-
+          {% set tot = states('sensor.ev_geladen_thuis_sinds_start') | float(0) %}
+          {% set zon = states('sensor.ev_kwh_van_zon_sinds_start') | float(0) %}
+          {{ (tot - zon) | round(2) }}
+
+      - name: EV kosten net EUR per uur
+        unique_id: ev_kosten_net_eur_per_uur
+        unit_of_measurement: EUR/h
+        device_class: monetary
+        icon: mdi:flash
+        state: >-
+          {% set net_kw = states('sensor.ev_vermogen_net_kw') | float(0) %}
+          {% set tibber = states('sensor.hemertje_elektriciteitsprijs') | float(0) %}
+          {% if tibber > 0 %}
+            {% set prijs = tibber %}
+          {% else %}
+            {% set prijs = states('sensor.nordpool_kwh_nl_eur_5_09_0') | float(0) %}
+          {% endif %}
+          {{ (net_kw * prijs) | round(5) }}
+
+      - name: EV kWh historisch vóór dashboard
+        unique_id: ev_kwh_historisch_voor_dashboard
+        unit_of_measurement: kWh
+        device_class: energy
+        icon: mdi:history
+        state: >-
+          {{ states('input_number.ev_meter_kwh_bij_live_start') | float(0) | round(2) }}
+
+      - name: EV kWh live sinds dashboard
+        unique_id: ev_kwh_live_sinds_dashboard
+        unit_of_measurement: kWh
+        device_class: energy
+        icon: mdi:ev-station
+        state: >-
+          {% set m = states('sensor.thuislader_jeroen_meterwaarde') | float(0) %}
+          {% set m0 = states('input_number.ev_meter_kwh_bij_live_start') | float(0) %}
+          {{ ([m - m0, 0] | max) | round(2) }}
+
+      - name: EV live dashboard sinds
+        unique_id: ev_live_dashboard_sinds_label
+        icon: mdi:calendar-start
+        state: >-
+          {% set raw = states('input_datetime.ev_kosten_live_start') %}
+          {% if raw in ['unknown', 'unavailable', ''] %}
+            onbekend
+          {% else %}
+            {% set dt = as_datetime(raw) %}
+            {% set months = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'] %}
+            {{ dt.day }} {{ months[dt.month - 1] }} {{ dt.year }}
+          {% endif %}
+
+      - name: EV kWh zon live sinds dashboard
+        unique_id: ev_kwh_zon_live_sinds_dashboard
+        unit_of_measurement: kWh
+        device_class: energy
+        icon: mdi:solar-power
+        state: >-
+          {% set live = states('sensor.ev_kwh_live_sinds_dashboard') | float(0) %}
+          {% set zon = states('sensor.ev_opgeteld_zon_kwh') | float(0)
+             - states('input_number.ev_zon_kwh_bij_live_start') | float(0) %}
+          {{ [zon, live] | min | round(2) }}
+
+      - name: EV zon aandeel live laden
+        unique_id: ev_zon_aandeel_live_laden
+        unit_of_measurement: "%"
+        icon: mdi:solar-power
+        state: >-
+          {% set live = states('sensor.ev_kwh_live_sinds_dashboard') | float(0) %}
+          {% set zon = states('sensor.ev_kwh_zon_live_sinds_dashboard') | float(0) %}
+          {% if live > 0.01 %}
+            {{ (zon / live * 100) | round(0) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: EV kWh zon historisch vóór dashboard
+        unique_id: ev_kwh_zon_historisch_voor_dashboard
+        unit_of_measurement: kWh
+        device_class: energy
+        icon: mdi:solar-power
+        state: >-
+          {% set tot = states('sensor.ev_kwh_van_zon_sinds_start') | float(0) %}
+          {% set live = states('sensor.ev_kwh_zon_live_sinds_dashboard') | float(0) %}
+          {{ ([tot - live, 0] | max) | round(2) }}
+
+      - name: EV teruglever prijs kWh
+        unique_id: ev_teruglever_prijs_kwh
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:transmission-tower-export
+        state: >-
+          {% set override = states('input_number.ev_teruglever_prijs_kwh') | float(0) %}
+          {% set spot = states('sensor.nordpool_kwh_nl_eur_5_10_0') | float(0) %}
+          {% if override > 0 %}
+            {{ override | round(5) }}
+          {% elif spot > 0 %}
+            {{ spot | round(5) }}
+          {% else %}
+            {{ states('sensor.ev_gemiddelde_laadprijs_kwh') | float(0.1) | round(5) }}
+          {% endif %}
+
+      - name: EV gemiste teruglever historisch
+        unique_id: ev_gemiste_teruglever_historisch_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:solar-power-off
+        state: >-
+          {% set kwh = states('sensor.ev_kwh_zon_historisch_voor_dashboard') | float(0) %}
+          {% set prijs = states('sensor.ev_teruglever_prijs_kwh') | float(0) %}
+          {{ (kwh * prijs) | round(2) }}
+
+      - name: EV gemiste teruglever live
+        unique_id: ev_gemiste_teruglever_live_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:solar-power-off
+        state: >-
+          {% set opg = states('input_number.ev_gemiste_teruglever_opgebouwd_eur') | float(0) %}
+          {% set cum = states('sensor.ev_gemiste_teruglever_cum_eur') | float(0) %}
+          {% set off = states('input_number.ev_gemiste_teruglever_offset_eur') | float(0) %}
+          {{ (opg + cum - off) | round(2) }}
+
+      - name: EV gemiste teruglever totaal
+        unique_id: ev_gemiste_teruglever_totaal_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:solar-power-off
+        state: >-
+          {% set h = states('sensor.ev_gemiste_teruglever_historisch') | float(0) %}
+          {% set l = states('sensor.ev_gemiste_teruglever_live') | float(0) %}
+          {{ (h + l) | round(2) }}
+
+      - name: EV kosten historisch geschat
+        unique_id: ev_kosten_historisch_geschat
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:history
+        state: >-
+          {% set kwh = states('input_number.ev_meter_kwh_bij_live_start') | float(0) %}
+          {% set tot = states('sensor.ev_geladen_thuis_sinds_start') | float(0) %}
+          {% set net = states('sensor.ev_kwh_van_net_sinds_start') | float(0) %}
+          {% set ratio = (net / tot) if tot > 0 else 1 %}
+          {% set prijs = states('sensor.ev_gemiddelde_laadprijs_kwh') | float(0) %}
+          {{ (kwh * ratio * prijs) | round(2) }}
+
+      - name: EV baten historisch
+        unique_id: ev_baten_historisch_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:cash-plus
+        state: >-
+          {% set kwh = states('sensor.ev_kwh_historisch_voor_dashboard') | float(0) %}
+          {% set rate = states('input_number.ev_vergoeding_per_kwh') | float(0.3) %}
+          {{ (kwh * rate) | round(2) }}
+
+      - name: EV netto historisch
+        unique_id: ev_netto_historisch_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:scale-balance
+        state: >-
+          {% set baten = states('sensor.ev_baten_historisch') | float(0) %}
+          {% set kosten = states('sensor.ev_kosten_historisch_geschat') | float(0) %}
+          {{ (baten - kosten) | round(2) }}
+
+      - name: EV kosten live Tibber
+        unique_id: ev_kosten_live_tibber
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:flash
+        state: >-
+          {% set opg = states('input_number.ev_kosten_live_opgebouwd_eur') | float(0) %}
+          {% set cum = states('sensor.ev_kosten_net_cum_eur') | float(0) %}
+          {% set off = states('input_number.ev_kosten_integrator_offset_eur') | float(0) %}
+          {{ (opg + cum - off) | round(2) }}
+
+      - name: EV baten live
+        unique_id: ev_baten_live_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:cash-plus
+        state: >-
+          {% set kwh = states('sensor.ev_kwh_live_sinds_dashboard') | float(0) %}
+          {% set rate = states('input_number.ev_vergoeding_per_kwh') | float(0.3) %}
+          {{ (kwh * rate) | round(2) }}
+
+      - name: EV netto live
+        unique_id: ev_netto_live_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:scale-balance
+        state: >-
+          {% set baten = states('sensor.ev_baten_live') | float(0) %}
+          {% set kosten = states('sensor.ev_kosten_live_tibber') | float(0) %}
+          {{ (baten - kosten) | round(2) }}
+
+      - name: EV kosten dynamisch sinds start
+        unique_id: ev_kosten_dynamisch_sinds_start
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:flash
+        state: >-
+          {% set h = states('sensor.ev_kosten_historisch_geschat') | float(0) %}
+          {% set l = states('sensor.ev_kosten_live_tibber') | float(0) %}
+          {{ (h + l) | round(2) }}
+
+      - name: EV kosten vandaag live
+        unique_id: ev_kosten_vandaag_live
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:cash-clock
+        state: >-
+          {% set cum = states('sensor.ev_kosten_net_cum_eur') | float(0) %}
+          {% set off = states('input_number.ev_kosten_integrator_offset_eur') | float(0) %}
+          {{ (cum - off) | round(2) }}
+
+      - name: EV gemiddelde laadprijs kWh
+        unique_id: ev_gemiddelde_laadprijs_kwh
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:chart-timeline-variant
+        state: >-
+          {% set wz = states('input_number.ev_laad_gewicht_zondag') | float(75) / 100 %}
+          {% set az = states('input_number.ev_laadprijs_zondag_seed') | float(0.234) %}
+          {% set an = states('input_number.ev_laadprijs_nacht_seed') | float(0.271) %}
+          {{ (wz * az + (1 - wz) * an) | round(5) }}
+
+      - name: EV gem. prijs kWh historisch
+        unique_id: ev_gem_prijs_kwh_historisch
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:currency-eur
+        state: >-
+          {% set kwh = states('sensor.ev_kwh_historisch_voor_dashboard') | float(0) %}
+          {% set kosten = states('sensor.ev_kosten_historisch_geschat') | float(0) %}
+          {% if kwh > 0.01 %}
+            {{ (kosten / kwh) | round(5) }}
+          {% else %}
+            {{ states('sensor.ev_gemiddelde_laadprijs_kwh') | float(0) | round(5) }}
+          {% endif %}
+
+      - name: EV gem. prijs kWh live
+        unique_id: ev_gem_prijs_kwh_live
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:currency-eur
+        state: >-
+          {% set kwh = states('sensor.ev_kwh_live_sinds_dashboard') | float(0) %}
+          {% set kosten = states('sensor.ev_kosten_live_tibber') | float(0) %}
+          {% if kwh > 0.01 %}
+            {{ (kosten / kwh) | round(5) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: EV gem. prijs kWh totaal
+        unique_id: ev_gem_prijs_kwh_totaal
+        unit_of_measurement: EUR/kWh
+        device_class: monetary
+        icon: mdi:currency-eur
+        state: >-
+          {% set kwh = states('sensor.ev_geladen_thuis_sinds_start') | float(0) %}
+          {% set kosten = states('sensor.ev_kosten_dynamisch_sinds_start') | float(0) %}
+          {% if kwh > 0.01 %}
+            {{ (kosten / kwh) | round(5) }}
+          {% else %}
+            0
+          {% endif %}
+
+      - name: EV vergoeding minus kosten
+        unique_id: ev_vergoeding_minus_kosten
+        unit_of_measurement: EUR
+        device_class: monetary
+        icon: mdi:scale-balance
+        state: >-
+          {% set v = states('sensor.ev_werkgever_vergoeding') | float(0) %}
+          {% set k = states('sensor.ev_kosten_dynamisch_sinds_start') | float(0) %}
+          {{ (v - k) | round(2) }}
+
+      - name: EV laadstatus
+        unique_id: ev_laadstatus
+        icon: mdi:ev-station
+        state: >-
+          {% set w = states('sensor.thuislader_jeroen_laadvermogen') | float(0) %}
+          {% if w > 100 %}
+            Laden {{ (w / 1000) | round(1) }} kW
+            ({{ states('sensor.ev_pv_aandeel_tijdens_laden') | int(0) }}% zon)
+          {% else %}
+            Niet aan het laden
+          {% endif %}
+
+  - trigger:
+      - platform: time_pattern
+        minutes: "/5"
+      - platform: homeassistant
+        event: start
+      - platform: state
+        entity_id:
+          - input_number.ev_kosten_integrator_offset_eur
+          - input_number.ev_gemiste_teruglever_offset_eur
+    sensor:
+      - name: EV kosten net cum EUR
+        unique_id: ev_kosten_net_cum_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        state_class: total_increasing
+        icon: mdi:cash
+        state: >-
+          {% set prev = this.state | float(0) %}
+          {% set rate = states('sensor.ev_kosten_net_eur_per_uur') | float(0) %}
+          {{ (prev + rate * (5 / 60)) | round(4) }}
+
+      - name: EV gemiste teruglever cum EUR
+        unique_id: ev_gemiste_teruglever_cum_eur
+        unit_of_measurement: EUR
+        device_class: monetary
+        state_class: total_increasing
+        icon: mdi:solar-power-off
+        state: >-
+          {% set prev = this.state | float(0) %}
+          {% set zon_kw = states('sensor.ev_vermogen_zon_kw') | float(0) %}
+          {% set prijs = states('sensor.ev_teruglever_prijs_kwh') | float(0) %}
+          {% set live_start = states('input_datetime.ev_kosten_live_start') %}
+          {% set after_live = live_start not in ['unknown', 'unavailable', '']
+             and as_timestamp(now()) >= as_timestamp(live_start) %}
+          {% if after_live and zon_kw > 0 and prijs > 0 %}
+            {{ (prev + zon_kw * prijs * (5 / 60)) | round(4) }}
+          {% else %}
+            {{ prev | round(4) }}
+          {% endif %}
+
+sensor:
+  - platform: integration
+    source: sensor.ev_vermogen_net_kw
+    name: EV opgeteld net kWh
+    unique_id: ev_opgeteld_net_kwh
+    method: left
+    round: 3
+
+  - platform: integration
+    source: sensor.ev_vermogen_zon_kw
+    name: EV opgeteld zon kWh
+    unique_id: ev_opgeteld_zon_kwh
+    method: left
+    round: 3
+
+  - platform: statistics
+    name: EV geladen vandaag
+    unique_id: ev_geladen_vandaag_statistics
+    entity_id: sensor.thuislader_jeroen_meterwaarde
+    state_characteristic: change
+    max_age:
+      days: 1
+
+utility_meter:
+  ev_thuis_laden_maandelijks:
+    source: sensor.thuislader_jeroen_meterwaarde
+    name: EV laden maandelijks (meter)
+    cycle: monthly
+
+automation:
+  - id: ev_laadprijs_sample
+    alias: EV laadprijs sample (zondagmiddag / nacht)
+    triggers:
+      - trigger: time_pattern
+        minutes: "/15"
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set p = states('sensor.hemertje_elektriciteitsprijs') | float(0) %}
+          {% if p <= 0 %}
+            {% set p = states('sensor.nordpool_kwh_nl_eur_5_09_0') | float(0) %}
+          {% endif %}
+          {% set dow = now().weekday() %}
+          {% set h = now().hour %}
+          {% set zs = states('input_number.ev_laad_zondag_uur_start') | int(11) %}
+          {% set ze = states('input_number.ev_laad_zondag_uur_eind') | int(19) %}
+          {% set ns = states('input_number.ev_laad_nacht_uur_start') | int(0) %}
+          {% set ne = states('input_number.ev_laad_nacht_uur_eind') | int(7) %}
+          {{ p > 0 and ((dow == 6 and h >= zs and h < ze) or (h >= ns and h < ne)) }}
+    actions:
+      - variables:
+          p: >-
+            {% set t = states('sensor.hemertje_elektriciteitsprijs') | float(0) %}
+            {{ t if t > 0 else states('sensor.nordpool_kwh_nl_eur_5_09_0') | float(0) }}
+          dow: "{{ now().weekday() }}"
+          hour: "{{ now().hour }}"
+          zs: "{{ states('input_number.ev_laad_zondag_uur_start') | int(11) }}"
+          ze: "{{ states('input_number.ev_laad_zondag_uur_eind') | int(19) }}"
+          ns: "{{ states('input_number.ev_laad_nacht_uur_start') | int(0) }}"
+          ne: "{{ states('input_number.ev_laad_nacht_uur_eind') | int(7) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ dow | int == 6 and hour | int >= zs | int and hour | int < ze | int }}"
+            sequence:
+              - variables:
+                  old: "{{ states('input_number.ev_laadprijs_zondag_seed') | float(0) }}"
+                  n: "{{ states('input_number.ev_laad_zondag_monsters') | int(0) }}"
+                  new_avg: "{{ ((old * n + p | float) / (n + 1)) | round(4) }}"
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.ev_laadprijs_zondag_seed
+                data:
+                  value: "{{ new_avg }}"
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.ev_laad_zondag_monsters
+                data:
+                  value: "{{ n + 1 }}"
+        default:
+          - variables:
+              old: "{{ states('input_number.ev_laadprijs_nacht_seed') | float(0) }}"
+              n: "{{ states('input_number.ev_laad_nacht_monsters') | int(0) }}"
+              new_avg: "{{ ((old * n + p | float) / (n + 1)) | round(4) }}"
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_laadprijs_nacht_seed
+            data:
+              value: "{{ new_avg }}"
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_laad_nacht_monsters
+            data:
+              value: "{{ n + 1 }}"
+
+  - id: ev_kosten_offsets_herstel_bij_start
+    alias: EV kosten offsets herstel bij HA start
+    description: >-
+      Na reboot staan offset-helpers soms op 0 terwijl integrators cumulatief
+      doorlopen. Herberekent opgebouwd/offset proportioneel op kWh (live vs vandaag).
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - delay:
+          seconds: 90
+      - variables:
+          cum: "{{ states('sensor.ev_kosten_net_cum_eur') | float(0) }}"
+          cum_tl: "{{ states('sensor.ev_gemiste_teruglever_cum_eur') | float(0) }}"
+          offset_eur: "{{ states('input_number.ev_kosten_integrator_offset_eur') | float(0) }}"
+          opgebouwd_eur: "{{ states('input_number.ev_kosten_live_opgebouwd_eur') | float(0) }}"
+          offset_tl_eur: "{{ states('input_number.ev_gemiste_teruglever_offset_eur') | float(0) }}"
+          opgebouwd_tl_eur: "{{ states('input_number.ev_gemiste_teruglever_opgebouwd_eur') | float(0) }}"
+          live_kwh: "{{ states('sensor.ev_kwh_live_sinds_dashboard') | float(0) }}"
+          vandaag_kwh: "{{ states('sensor.ev_geladen_vandaag') | float(0) }}"
+          kwh_voor_vandaag: "{{ [live_kwh - vandaag_kwh, 0] | max }}"
+          needs_fix: >-
+            {{ cum > 0.01 and offset_eur < 0.001 and opgebouwd_eur < 0.001
+               and live_kwh > (vandaag_kwh + 0.5) }}
+          needs_fix_tl: >-
+            {{ cum_tl > 0.001 and offset_tl_eur < 0.001 and opgebouwd_tl_eur < 0.001
+               and live_kwh > (vandaag_kwh + 0.5) }}
+          opgebouwd: >-
+            {% if live_kwh > 0.01 %}
+              {{ (cum * kwh_voor_vandaag / live_kwh) | round(2) }}
+            {% else %}
+              0
+            {% endif %}
+          opgebouwd_tl: >-
+            {% if live_kwh > 0.01 %}
+              {{ (cum_tl * kwh_voor_vandaag / live_kwh) | round(2) }}
+            {% else %}
+              0
+            {% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ needs_fix }}"
+        then:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_kosten_live_opgebouwd_eur
+            data:
+              value: "{{ opgebouwd }}"
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_kosten_integrator_offset_eur
+            data:
+              value: "{{ opgebouwd }}"
+      - if:
+          - condition: template
+            value_template: "{{ needs_fix_tl }}"
+        then:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_gemiste_teruglever_opgebouwd_eur
+            data:
+              value: "{{ opgebouwd_tl }}"
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.ev_gemiste_teruglever_offset_eur
+            data:
+              value: "{{ opgebouwd_tl }}"
+
+  - id: ev_kosten_live_dag_afsluiten
+    alias: EV kosten live dag afsluiten (middernacht)
+    description: >-
+      Slaat Tibber-kosten en gemiste teruglever van vandaag op; reset integrators.
+    triggers:
+      - trigger: time
+        at: "00:05:00"
+    actions:
+      - variables:
+          cum: "{{ states('sensor.ev_kosten_net_cum_eur') | float(0) }}"
+          offset_eur: "{{ states('input_number.ev_kosten_integrator_offset_eur') | float(0) }}"
+          opg: "{{ states('input_number.ev_kosten_live_opgebouwd_eur') | float(0) }}"
+          dag_raw: "{{ cum - offset_eur }}"
+          cum_tl: "{{ states('sensor.ev_gemiste_teruglever_cum_eur') | float(0) }}"
+          off_tl: "{{ states('input_number.ev_gemiste_teruglever_offset_eur') | float(0) }}"
+          opg_tl: "{{ states('input_number.ev_gemiste_teruglever_opgebouwd_eur') | float(0) }}"
+          dag_tl: "{{ cum_tl - off_tl }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev_kosten_live_opgebouwd_eur
+        data:
+          value: "{{ (opg + dag_raw) | round(2) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev_kosten_integrator_offset_eur
+        data:
+          value: "{{ cum | round(5) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev_gemiste_teruglever_opgebouwd_eur
+        data:
+          value: "{{ (opg_tl + dag_tl) | round(2) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.ev_gemiste_teruglever_offset_eur
+        data:
+          value: "{{ cum_tl | round(5) }}"
