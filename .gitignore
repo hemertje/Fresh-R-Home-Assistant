@@ -1,12 +1,6 @@
 # Lokale Zendure-proxy fork hoort in eigen repo (~/Development/Zendure-zenSDK-proxy), niet in deze tree
 Zendure-zenSDK-proxy/
 
-# Model downloads horen in ~/models, niet in deze HA-repo
-Qwen*/
-*.gguf
-*.safetensors
-*.tar.gz
-
 .cursor/
 __pycache__/
 *.pyc
